@@ -65,8 +65,6 @@ services:
       - DEVICE=${DEVICE:-cpu}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PYTHONUNBUFFERED=1
-    volumes:
-      - ia-models:/app/models
     networks:
       - sensus-network
     restart: unless-stopped
@@ -132,4 +130,3 @@ networks:
 volumes:
   postgres-data:
   redis-data:
-  ia-models:
