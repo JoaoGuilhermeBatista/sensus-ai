@@ -1,0 +1,135 @@
+name: sensus
+
+services:
+
+  # ─── Frontend ─────────────────────────────────────────────────────────────
+  frontend-xr:
+    build:
+      context: ./apps/frontend-xr
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      - VITE_BACKEND_WS_URL=${VITE_BACKEND_WS_URL:-ws://localhost:8080/ws/realtime}
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8080/api}
+      - VITE_ENABLE_XR=${VITE_ENABLE_XR:-true}
+    depends_on:
+      backend-api:
+        condition: service_healthy
+    networks:
+      - sensus-network
+    restart: unless-stopped
+
+  # ─── Backend API ──────────────────────────────────────────────────────────
+  backend-api:
+    build:
+      context: ./apps/backend-api
+      dockerfile: Dockerfile
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASS=${POSTGRES_PASSWORD:-postgres}
+      - AI_SERVICE_URL=http://ia-service:8000
+      - WEBSOCKET_MAX_PAYLOAD_SIZE=${WEBSOCKET_MAX_PAYLOAD_SIZE:-512000}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ia-service:
+        condition: service_healthy
+    networks:
+      - sensus-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  # ─── AI Inference Service ─────────────────────────────────────────────────
+  ia-service:
+    build:
+      context: ./apps/ia-service
+      dockerfile: Dockerfile
+    ports:
+      - "${IA_PORT:-8000}:8000"
+    environment:
+      - MODEL_PATH=${MODEL_PATH:-/app/models/yolo26n.pt}
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.5}
+      - MAX_IMAGE_SIZE=${MAX_IMAGE_SIZE:-512000}
+      - DEVICE=${DEVICE:-cpu}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ia-models:/app/models
+    networks:
+      - sensus-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    # Uncomment to enable NVIDIA GPU support (requires nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ─── PostgreSQL ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-visaoassistiva}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - sensus-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-visaoassistiva}"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  # ─── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - sensus-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+# ─── Networks ───────────────────────────────────────────────────────────────
+networks:
+  sensus-network:
+    driver: bridge
+
+# ─── Volumes ────────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+  redis-data:
+  ia-models:
