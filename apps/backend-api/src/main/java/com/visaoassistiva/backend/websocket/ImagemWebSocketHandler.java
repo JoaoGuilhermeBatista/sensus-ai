@@ -83,6 +83,9 @@ public class ImagemWebSocketHandler extends AbstractWebSocketHandler {
             log.debug("[WEBSOCKET] Resposta enviada: sessionId={}", session.getId());
         } catch (IAServiceException e) {
             session.sendMessage(new TextMessage("{\"erro\": \"IA indisponível\"}"));
+        } catch (Exception e) {
+            log.warn("[WEBSOCKET] Erro ao processar frame, mantendo sessão: sessionId={} erro={}",
+                    session.getId(), e.getMessage());
         }
     }
 }
