@@ -1,36 +1,95 @@
-# Node
+# =========================
+# Node / Frontend
+# =========================
 node_modules/
 dist/
 build/
+coverage/
+.npm/
+.cache/
+vite.config.ts.timestamp-*
 
-# Python
+# =========================
+# Python / IA
+# =========================
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.python-version
+
 .venv/
 venv/
+env/
 
-# Java
+.pytest_cache/
+.mypy_cache/
+
+# =========================
+# Java / Spring
+# =========================
 target/
 *.class
+*.jar
+*.war
+*.ear
 
-# IDE
+.mvn/
+.gradle/
+
+# =========================
+# IDEs
+# =========================
 .idea/
 .vscode/
+*.iml
 
+# =========================
 # Logs
+# =========================
 logs/
 *.log
 
+# =========================
 # Environment
+# =========================
 .env
+.env.local
+.env.*.local
 
+# =========================
 # Machine Learning
+# =========================
 datasets/
 models/
 runs/
+checkpoints/
+
 *.pt
 *.pth
+*.onnx
+*.engine
 
+# =========================
 # OS
+# =========================
 .DS_Store
 Thumbs.db
+
+# =========================
+# Docker
+# =========================
+docker-data/
+
+# =========================
+# Temporary files
+# =========================
+tmp/
+temp/
+*.tmp
+
+# =========================
+# Testing
+# =========================
+playwright-report/
+test-results/
