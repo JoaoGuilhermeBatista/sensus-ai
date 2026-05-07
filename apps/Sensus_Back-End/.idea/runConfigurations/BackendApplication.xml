@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="BackendApplication" type="MavenRunConfiguration" factoryName="Maven">
+    <MavenSettings>
+      <option name="workingDirPath" value="/home/joaog/IdeaProjects/Sensus/backend" />
+      <option name="goals" value="spring-boot:run" />
+    </MavenSettings>
+    <method v="2" />
+  </configuration>
+</component>

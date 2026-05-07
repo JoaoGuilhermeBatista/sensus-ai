@@ -1,0 +1,80 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  color: #fff;
+  font-family: sans-serif;
+}
+
+.camera-container video {
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+}
+
+.camera-error,
+.camera-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  font-size: 1.2rem;
+}
+
+/* StatusIndicator */
+.status-indicator {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  z-index: 10;
+}
+
+.status-open       { background: #22c55e; color: #000; }
+.status-connecting { background: #f59e0b; color: #000; }
+.status-closed     { background: #ef4444; color: #fff; }
+
+/* OverlayInfo */
+.overlay-info {
+  position: fixed;
+  bottom: 24px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10;
+}
+
+.obj-close {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #facc15;
+  text-shadow: 0 1px 4px #000;
+}
+
+.obj-normal {
+  font-size: 0.95rem;
+  color: #e2e8f0;
+  text-shadow: 0 1px 4px #000;
+}
+
+/* ConnectionGuard */
+.connection-guard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  font-size: 1.1rem;
+  color: #ef4444;
+}

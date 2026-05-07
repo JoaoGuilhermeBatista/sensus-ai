@@ -1,0 +1,4 @@
+com/visaoassistiva/backend/service/AnaliseServiceTest.class
+com/visaoassistiva/backend/service/RateLimiterServiceTest.class
+com/visaoassistiva/backend/controller/AnaliseControllerTest.class
+com/visaoassistiva/backend/controller/StatusControllerTest.class

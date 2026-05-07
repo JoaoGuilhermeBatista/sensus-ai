@@ -1,0 +1,4 @@
+/home/joaog/IdeaProjects/Sensus/backend/src/test/java/com/visaoassistiva/backend/controller/AnaliseControllerTest.java
+/home/joaog/IdeaProjects/Sensus/backend/src/test/java/com/visaoassistiva/backend/controller/StatusControllerTest.java
+/home/joaog/IdeaProjects/Sensus/backend/src/test/java/com/visaoassistiva/backend/service/AnaliseServiceTest.java
+/home/joaog/IdeaProjects/Sensus/backend/src/test/java/com/visaoassistiva/backend/service/RateLimiterServiceTest.java
