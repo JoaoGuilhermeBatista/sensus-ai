@@ -1,195 +1,142 @@
-from fastapi import FastAPI, UploadFile, HTTPException, Header
-from pydantic import BaseModel
-import numpy as np
-import cv2
-from ultralytics import YOLO
-from pathlib import Path
-from typing import Optional
+from __future__ import annotations
+
+import base64
 import ipaddress
-import httpx
 import os
 import re
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+import time
 from collections import defaultdict, deque
+from pathlib import Path
+from typing import Optional
+from urllib.parse import urlparse
+import socket
 
-import time as _time
+import cv2
+import httpx
+import numpy as np
+from fastapi import FastAPI, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from ultralytics import YOLO
 
-app = FastAPI()
+from models import (
+    DetectedObject,
+    ErrorDetail,
+    ErrorResponse,
+    HealthResponse,
+    InferRequest,
+    InferResponse,
+)
 
-INFERENCE_CONF = float(os.environ.get("IA_INFERENCE_CONF", "0.25"))
-INFERENCE_IOU = float(os.environ.get("IA_INFERENCE_IOU", "0.45"))
-INFERENCE_IMGSZ = int(os.environ.get("IA_INFERENCE_IMGSZ", "640"))
-MIN_BOX_AREA_RATIO = float(os.environ.get("IA_MIN_BOX_AREA_RATIO", "0.0015"))
-MAX_BOX_AREA_RATIO = float(os.environ.get("IA_MAX_BOX_AREA_RATIO", "0.85"))
-MIN_BOX_ASPECT_RATIO = float(os.environ.get("IA_MIN_BOX_ASPECT_RATIO", "0.12"))
-MAX_BOX_ASPECT_RATIO = float(os.environ.get("IA_MAX_BOX_ASPECT_RATIO", "8.0"))
-MIN_PERSISTENCE = int(os.environ.get("IA_MIN_PERSISTENCE", "1"))
-CAMERA_HISTORY_SIZE = int(os.environ.get("IA_CAMERA_HISTORY_SIZE", "5"))
-ENABLE_TRACKING = os.environ.get("IA_ENABLE_TRACKING", "1").strip().lower() not in {"0", "false", "no"}
+# ─── Environment ─────────────────────────────────────────────────────────────
+# SDD-specified primary env vars; backward-compat aliases kept as fallbacks.
 
-_history = defaultdict(lambda: deque(maxlen=CAMERA_HISTORY_SIZE))
+CONFIDENCE_THRESHOLD = float(
+    os.environ.get("CONFIDENCE_THRESHOLD")
+    or os.environ.get("IA_INFERENCE_CONF", "0.25")
+)
+MODEL_PATH = (
+    os.environ.get("MODEL_PATH", "").strip()
+    or os.environ.get("IA_MODEL_PATH", "").strip()
+)
+MAX_IMAGE_SIZE = int(os.environ.get("MAX_IMAGE_SIZE", "512000"))
+DEVICE = os.environ.get("DEVICE", "cpu").strip()
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").strip()
 
-# servir página estática para teste da câmera
+# Internal inference tuning (not exposed in SDD but kept configurable)
+_INFERENCE_IOU = float(os.environ.get("IA_INFERENCE_IOU", "0.45"))
+_INFERENCE_IMGSZ = int(os.environ.get("IA_INFERENCE_IMGSZ", "640"))
+_MIN_BOX_AREA_RATIO = float(os.environ.get("IA_MIN_BOX_AREA_RATIO", "0.0015"))
+_MAX_BOX_AREA_RATIO = float(os.environ.get("IA_MAX_BOX_AREA_RATIO", "0.85"))
+_MIN_BOX_ASPECT_RATIO = float(os.environ.get("IA_MIN_BOX_ASPECT_RATIO", "0.12"))
+_MAX_BOX_ASPECT_RATIO = float(os.environ.get("IA_MAX_BOX_ASPECT_RATIO", "8.0"))
+_MIN_PERSISTENCE = int(os.environ.get("IA_MIN_PERSISTENCE", "1"))
+_CAMERA_HISTORY_SIZE = int(os.environ.get("IA_CAMERA_HISTORY_SIZE", "5"))
+_ENABLE_TRACKING = (
+    os.environ.get("IA_ENABLE_TRACKING", "1").strip().lower()
+    not in {"0", "false", "no"}
+)
+
+# Distance classification thresholds (bbox height / image height)
+_DISTANCE_CLOSE_THRESHOLD = float(os.environ.get("IA_DISTANCE_CLOSE", "0.35"))
+_DISTANCE_MEDIUM_THRESHOLD = float(os.environ.get("IA_DISTANCE_MEDIUM", "0.12"))
+
+# ─── App ─────────────────────────────────────────────────────────────────────
+
+app = FastAPI(title="Sensus IA Service", version="1.0.0")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-@app.get("/health")
-def health():
-    return {"status": "UP"}
-
-
-@app.get("/")
-async def root():
-    return FileResponse("static/index.html")
-
-
-@app.get('/model')
-async def model_info():
-    """Retorna caminho do modelo atual (se carregado) e se está carregado."""
-    loaded = _model is not None
-    path = globals().get('_model_path', None)
-    device = None
-    classes = None
+@app.on_event("startup")
+def _preload_model() -> None:
+    """Eagerly load the model at startup so /health returns UP immediately."""
     try:
-        if loaded:
-            # classes/names
-            names = getattr(_model, 'names', None)
-            if isinstance(names, dict):
-                # sort by key to preserve class indices
-                try:
-                    classes = [names[k] for k in sorted(names, key=lambda x: int(x))]
-                except Exception:
-                    classes = [names[k] for k in names]
-            else:
-                classes = names
+        get_model()
+    except Exception as exc:
+        print(f"[ia-service] WARNING: could not preload model at startup: {exc}")
 
-            # try to detect device (works if model is a torch module)
-            try:
-                import torch
-                md = getattr(_model, 'model', None)
-                dev = None
-                if md is not None:
-                    # check first parameter
-                    for p in md.parameters():
-                        dev = p.device
-                        break
-                if dev is None:
-                    dev = getattr(_model, 'device', None) or getattr(md, 'device', None)
-                device = str(dev) if dev is not None else None
-            except Exception:
-                # fallback
-                device = str(getattr(_model, 'device', None) or getattr(getattr(_model, 'model', None), 'device', None))
-    except Exception:
-        pass
+# ─── Global Model State ───────────────────────────────────────────────────────
 
-    return {"loaded": loaded, "model_path": path, "device": device, "classes": classes}
+_model: Optional[YOLO] = None
+_model_path: Optional[str] = None
+_history: defaultdict = defaultdict(lambda: deque(maxlen=_CAMERA_HISTORY_SIZE))
 
+# ─── Per-class Heuristics ────────────────────────────────────────────────────
+
+_OBSTACLE_CLASSES = {
+    "chair", "sofa", "couch", "bench", "person", "bicycle", "motorbike",
+    "car", "bed", "dining table", "potted plant", "tv", "laptop", "backpack",
+    "suitcase", "handbag", "bottle", "umbrella", "table",
+}
+
+_CLASS_REAL_HEIGHT_CM = {
+    "person": 170.0, "pessoa": 170.0,
+    "chair": 90.0, "cadeira": 90.0,
+    "table": 75.0, "mesa": 75.0,
+    "bottle": 25.0,
+}
+
+_CLASS_MIN_CONF = {
+    "person": 0.30, "pessoa": 0.30,
+    "chair": 0.28, "cadeira": 0.28,
+    "backpack": 0.30, "laptop": 0.35,
+    "bench": 0.28, "table": 0.28, "mesa": 0.28,
+}
+
+_CLASS_PRIORITY = {
+    "person": 3.0, "pessoa": 3.0,
+    "chair": 1.5, "cadeira": 1.5,
+    "table": 1.5, "mesa": 1.5,
+    "laptop": 1.2, "backpack": 1.0, "bench": 1.2,
+}
+
+# ─── API Key Auth (optional) ─────────────────────────────────────────────────
 
 _API_KEY = os.environ.get("IA_API_KEY", "").strip()
 
 
-def _verificar_api_key(x_api_key: Optional[str]) -> None:
-    """Se IA_API_KEY estiver definida, exige o header X-Api-Key correspondente."""
-    if not _API_KEY:
-        return
-    if x_api_key != _API_KEY:
-        raise HTTPException(status_code=401, detail="Não autorizado")
+def _require_api_key(x_api_key: Optional[str]) -> None:
+    if _API_KEY and x_api_key != _API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-@app.post('/model')
-async def model_set(item: dict, x_api_key: Optional[str] = Header(default=None)):
-    """Define um novo modelo via JSON {"path":"..."}. Requer X-Api-Key se IA_API_KEY estiver configurada."""
-    _verificar_api_key(x_api_key)
-    path = item.get('path') if isinstance(item, dict) else None
-    if not path:
-        raise HTTPException(status_code=400, detail='Forneça JSON com chave "path"')
-    if not Path(path).exists():
-        raise HTTPException(status_code=404, detail='Modelo não encontrado')
-    # reload model
-    try:
-        global _model
-        global _model_path
-        _model = YOLO(path)
-        _model_path = path
-        return {"model_path": _model_path}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# ─── Model Loading ────────────────────────────────────────────────────────────
 
-# carrega melhor modelo treinado ou fallback para pré-treinado
-_model = None
-_model_path = None
-
-def get_model():
-    """Carrega (e cacheia) o modelo na primeira requisição para evitar carregar no import."""
-    global _model
-    global _model_path
+def get_model() -> YOLO:
+    global _model, _model_path
     if _model is None:
-        # IA_MODEL_PATH permite trocar o modelo sem alterar o código.
-        # Exemplos: IA_MODEL_PATH=models/yolov8n.pt  ou  IA_MODEL_PATH=runs/detect/meu_treino/weights/best.pt
-        env_path = os.environ.get("IA_MODEL_PATH", "").strip()
-        if env_path:
-            chosen = env_path
-            if not Path(chosen).exists():
-                raise FileNotFoundError(f"Modelo definido em IA_MODEL_PATH não encontrado: {chosen}")
-        else:
-          
-            pretrained = "models/yolov8n-seg.pt"
-            chosen = trained_model if Path(trained_model).exists() else pretrained
-
-        try:
-            print(f"Carregando modelo: {chosen}")
-            _model = YOLO(chosen)
-            _model_path = chosen
-        except Exception as e:
-            print(f"Erro ao carregar modelo {chosen}: {e}")
-            raise
-
+        path = MODEL_PATH or "yolov8n.pt"
+        if path and not Path(path).exists():
+            print(f"[ia-service] Model not found at '{path}', falling back to yolov8n.pt (auto-download)")
+            path = "yolov8n.pt"
+        print(f"[ia-service] Loading model: {path}  device={DEVICE}")
+        _model = YOLO(path)
+        _model_path = str(path)
     return _model
 
-# classes que normalmente representam obstáculos móveis/estáticos
-OBSTACLE_CLASSES = {"chair", "sofa", "couch", "bench", "person", "bicycle", "motorbike", "car", "bed", "dining table", "potted plant", "tv", "laptop", "backpack", "suitcase", "handbag", "bottle", "umbrella", "table"}
 
-# altura relativa da bbox acima da qual consideramos 'próximo'
-PROXIMITY_HEIGHT_THRESHOLD = 0.25
-
-# alturas típicas em centímetros para algumas classes (usadas para estimativa de distância)
-CLASS_REAL_HEIGHT_CM = {
-    "person": 170.0,
-    "pessoa": 170.0,
-    "chair": 90.0,
-    "cadeira": 90.0,
-    "table": 75.0,
-    "mesa": 75.0,
-    "bottle": 25.0,
-}
-
-CLASS_MIN_CONF = {
-    "person": 0.30,
-    "pessoa": 0.30,
-    "chair": 0.28,
-    "cadeira": 0.28,
-    "backpack": 0.30,
-    "laptop": 0.35,
-    "bench": 0.28,
-    "table": 0.28,
-    "mesa": 0.28,
-}
-
-CLASS_PRIORITY = {
-    "person": 3.0,
-    "pessoa": 3.0,
-    "chair": 1.5,
-    "cadeira": 1.5,
-    "table": 1.5,
-    "mesa": 1.5,
-    "laptop": 1.2,
-    "backpack": 1.0,
-    "bench": 1.2,
-}
-
-
-def _supports_half_precision() -> bool:
+def _gpu_available() -> bool:
     try:
         import torch
         return torch.cuda.is_available()
@@ -197,52 +144,79 @@ def _supports_half_precision() -> bool:
         return False
 
 
-def _prepare_image(img: np.ndarray) -> np.ndarray:
-    """Reduz custo quando a imagem é muito grande sem forçar perda agressiva de qualidade."""
+def _half_precision() -> bool:
+    return _gpu_available()
+
+
+# ─── Image Utilities ──────────────────────────────────────────────────────────
+
+def _resize_to_imgsz(img: np.ndarray) -> np.ndarray:
     h, w = img.shape[:2]
     max_side = max(h, w)
-    if max_side <= INFERENCE_IMGSZ:
+    if max_side <= _INFERENCE_IMGSZ:
         return img
+    scale = _INFERENCE_IMGSZ / float(max_side)
+    return cv2.resize(
+        img,
+        (max(1, int(w * scale)), max(1, int(h * scale))),
+        interpolation=cv2.INTER_AREA,
+    )
 
-    scale = INFERENCE_IMGSZ / float(max_side)
-    new_w = max(1, int(w * scale))
-    new_h = max(1, int(h * scale))
-    return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+def _bytes_to_image(data: bytes) -> Optional[np.ndarray]:
+    arr = np.frombuffer(data, np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    return _resize_to_imgsz(img) if img is not None else None
 
 
-def _load_image_from_bytes(contents: bytes) -> Optional[np.ndarray]:
-    np_img = np.frombuffer(contents, np.uint8)
-    img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
-    if img is None:
+def _base64_to_image(b64: str) -> Optional[np.ndarray]:
+    try:
+        data = base64.b64decode(b64)
+    except Exception:
         return None
-    return _prepare_image(img)
+    return _bytes_to_image(data)
 
 
 def _box_is_plausible(x1: float, y1: float, x2: float, y2: float, w: int, h: int) -> bool:
-    box_w = max(0.0, x2 - x1)
-    box_h = max(0.0, y2 - y1)
+    bw = max(0.0, x2 - x1)
+    bh = max(0.0, y2 - y1)
     if w <= 0 or h <= 0:
         return False
-
-    area_ratio = (box_w * box_h) / float(w * h)
-    if area_ratio < MIN_BOX_AREA_RATIO or area_ratio > MAX_BOX_AREA_RATIO:
+    area = (bw * bh) / float(w * h)
+    if not (_MIN_BOX_AREA_RATIO <= area <= _MAX_BOX_AREA_RATIO):
         return False
+    aspect = bw / max(1.0, bh)
+    return _MIN_BOX_ASPECT_RATIO <= aspect <= _MAX_BOX_ASPECT_RATIO
 
-    aspect_ratio = box_w / max(1.0, box_h)
-    if aspect_ratio < MIN_BOX_ASPECT_RATIO or aspect_ratio > MAX_BOX_ASPECT_RATIO:
-        return False
 
-    return True
+# ─── Distance Classification ──────────────────────────────────────────────────
 
+def _classify_distance(height_ratio: float) -> str:
+    """
+    Classify distance based on bounding-box height relative to the image.
+
+    Thresholds:
+      >= CLOSE  → perto   (isClose=True)
+      >= MEDIUM → medio
+      <  MEDIUM → longe
+    """
+    if height_ratio >= _DISTANCE_CLOSE_THRESHOLD:
+        return "perto"
+    if height_ratio >= _DISTANCE_MEDIUM_THRESHOLD:
+        return "medio"
+    return "longe"
+
+
+# ─── Core Inference Pipeline ──────────────────────────────────────────────────
 
 def _run_inference(img: np.ndarray):
     model = get_model()
     return model.predict(
         img,
-        conf=INFERENCE_CONF,
-        iou=INFERENCE_IOU,
-        imgsz=INFERENCE_IMGSZ,
-        half=_supports_half_precision(),
+        conf=CONFIDENCE_THRESHOLD,
+        iou=_INFERENCE_IOU,
+        imgsz=_INFERENCE_IMGSZ,
+        half=_half_precision(),
         verbose=False,
     )
 
@@ -251,106 +225,63 @@ def _run_tracked_inference(img: np.ndarray):
     model = get_model()
     return model.track(
         img,
-        conf=INFERENCE_CONF,
-        iou=INFERENCE_IOU,
-        imgsz=INFERENCE_IMGSZ,
-        half=_supports_half_precision(),
+        conf=CONFIDENCE_THRESHOLD,
+        iou=_INFERENCE_IOU,
+        imgsz=_INFERENCE_IMGSZ,
+        half=_half_precision(),
         persist=True,
         tracker="bytetrack.yaml",
         verbose=False,
     )
 
 
-def _coalesce_history(camera_id: Optional[str], objetos: list[dict]) -> list[dict]:
+def _coalesce_history(camera_id: Optional[str], detections: list[dict]) -> list[dict]:
     if not camera_id:
-        return objetos
-
+        return detections
     history = _history[camera_id]
-    history.append(objetos)
-    if len(history) < MIN_PERSISTENCE:
-        return objetos
-
-    counts = defaultdict(int)
-    confidence_sum = defaultdict(float)
-    latest = {}
+    history.append(detections)
+    if len(history) < _MIN_PERSISTENCE:
+        return detections
+    counts: dict = defaultdict(int)
+    conf_sum: dict = defaultdict(float)
+    latest: dict = {}
     for frame in history:
-        for obj in frame:
+        for d in frame:
             key = (
-                obj.get("track_id") if obj.get("track_id") is not None else obj.get("nome"),
-                obj.get("lado"),
+                d.get("track_id") if d.get("track_id") is not None else d.get("nome"),
+                d.get("lado"),
             )
             counts[key] += 1
-            confidence_sum[key] += float(obj.get("confidence") or 0.0)
-            latest[key] = obj
-
-    filtered = []
-    for key, obj in latest.items():
-        if counts[key] >= MIN_PERSISTENCE:
-            avg_conf = confidence_sum[key] / float(counts[key])
-            if avg_conf:
-                obj = {**obj, "confidence": round(avg_conf, 4)}
-            filtered.append(obj)
-    return filtered
+            conf_sum[key] += float(d.get("confidence") or 0.0)
+            latest[key] = d
+    result = []
+    for key, d in latest.items():
+        if counts[key] >= _MIN_PERSISTENCE:
+            avg = conf_sum[key] / float(counts[key])
+            result.append({**d, "confidence": round(avg, 4)} if avg else d)
+    return result
 
 
-def _build_orientation(objetos: list[dict]) -> str:
-    sides = {"esquerda": [], "centro": [], "direita": []}
-    obstacle_scores = {"esquerda": 0.0, "centro": 0.0, "direita": 0.0}
+def _detect(img: np.ndarray, camera_id: Optional[str] = None) -> list[dict]:
+    """
+    Run YOLO inference and return a list of raw detection dicts.
 
-    for o in objetos:
-        lado = o.get("lado", "centro")
-        nome = str(o.get("nome", "")).lower()
-        conf = float(o.get("confidence") or 0.0)
-        is_close = bool(o.get("isClose"))
-        priority = CLASS_PRIORITY.get(nome, 0.0)
-        sides.setdefault(lado, []).append(nome)
-
-        if nome in {"person", "pessoa"}:
-            obstacle_scores[lado] += 2.5 + priority + conf
-        elif nome in OBSTACLE_CLASSES or is_close:
-            obstacle_scores[lado] += 1.0 + priority + conf
-
-    guidance_parts = []
-    for lado in ["centro", "esquerda", "direita"]:
-        if any(n in {"person", "pessoa"} for n in sides.get(lado, [])):
-            guidance_parts.append("Pessoa à frente" if lado == "centro" else f"Pessoa à {lado}")
-
-    if obstacle_scores["centro"] > 0:
-        free_side = None
-        if obstacle_scores["esquerda"] == 0:
-            free_side = "esquerda"
-        elif obstacle_scores["direita"] == 0:
-            free_side = "direita"
-
-        if free_side:
-            guidance_parts.append(f"Obstáculo à frente — siga para a {free_side}")
-        else:
-            guidance_parts.append("Obstáculo à frente — cuidado, espaço estreito")
-    else:
-        guidance_parts.append("Caminho livre à frente")
-
-    for lado in ["esquerda", "direita"]:
-        if sides.get(lado):
-            guidance_parts.append(f"{sides[lado][0]} à {lado}")
-
-    return ", ".join(guidance_parts)
-
-
-def _process_image(img: np.ndarray, focal_length_px: Optional[float], real_height_cm: Optional[float], camera_id: Optional[str] = None):
+    Each dict contains all internal fields needed by both the SDD-contract
+    normalizer (_to_detected_object) and the legacy normalizer (_to_legacy_object).
+    """
     h, w = img.shape[:2]
-    use_tracking = ENABLE_TRACKING and camera_id is not None
+    use_tracking = _ENABLE_TRACKING and camera_id is not None
     results = _run_tracked_inference(img) if use_tracking else _run_inference(img)
-
-    objetos = []
     model = get_model()
+    raw: list[dict] = []
 
     for r in results:
         for box in r.boxes:
             conf = float(box.conf[0]) if getattr(box, "conf", None) is not None else None
-
             cls = int(box.cls[0])
             nome = str(model.names[cls])
-            min_conf = CLASS_MIN_CONF.get(nome.lower(), INFERENCE_CONF)
+
+            min_conf = _CLASS_MIN_CONF.get(nome.lower(), CONFIDENCE_THRESHOLD)
             if conf is not None and conf < min_conf:
                 continue
 
@@ -359,82 +290,234 @@ def _process_image(img: np.ndarray, focal_length_px: Optional[float], real_heigh
                 if getattr(box, "id", None) is not None:
                     track_id = int(box.id[0])
             except Exception:
-                track_id = None
+                pass
 
             x1, y1, x2, y2 = box.xyxy[0].tolist()
-
             if not _box_is_plausible(x1, y1, x2, y2, w, h):
                 continue
 
-            cx = (x1 + x2) / 2
+            cx = (x1 + x2) / 2.0
             bbox_h = y2 - y1
             height_ratio = bbox_h / float(h) if h else 0.0
-
-            if cx < w / 3:
-                lado = "esquerda"
-            elif cx > 2 * w / 3:
-                lado = "direita"
-            else:
-                lado = "centro"
-
-            proximidade = "próximo" if height_ratio > PROXIMITY_HEIGHT_THRESHOLD else "distante"
+            lado = (
+                "esquerda" if cx < w / 3
+                else ("direita" if cx > 2 * w / 3 else "centro")
+            )
 
             distance_cm = None
-            try:
-                if focal_length_px is not None:
-                    rh = real_height_cm if real_height_cm is not None else CLASS_REAL_HEIGHT_CM.get(nome.lower())
-                    if rh is not None and bbox_h > 0:
-                        distance_cm = round(float(focal_length_px * rh / bbox_h), 1)
-            except Exception:
-                distance_cm = None
+            rh = _CLASS_REAL_HEIGHT_CM.get(nome.lower())
+            if rh is not None and bbox_h > 0:
+                distance_cm = round(rh * float(h) / bbox_h, 1)
 
-            objetos.append({
+            raw.append({
                 "nome": nome,
                 "lado": lado,
-                "proximidade": proximidade,
                 "bbox": [x1, y1, x2, y2],
                 "confidence": conf,
                 "height_ratio": height_ratio,
                 "distance_cm": distance_cm,
                 "track_id": track_id,
+                "img_w": w,
+                "img_h": h,
             })
 
-    objetos = _coalesce_history(camera_id, objetos)
-    orientacao = _build_orientation([
-        {**o, "isClose": o.get("proximidade") == "próximo"}
-        for o in objetos
-    ])
+    return _coalesce_history(camera_id, raw)
 
-    objetos_contrato = []
-    for o in objetos:
-        prox = o.get("proximidade", "distante")
-        objetos_contrato.append({
-            "nome": o["nome"],
-            "distancia": "perto" if prox == "próximo" else "longe",
-            "isClose": prox == "próximo",
-            "lado": o.get("lado"),
-            "confidence": o.get("confidence"),
-            "distance_cm": o.get("distance_cm"),
-            "bbox": o.get("bbox"),
-        })
 
+# ─── Normalization ────────────────────────────────────────────────────────────
+
+def _to_detected_object(raw: dict) -> DetectedObject:
+    """Normalize a raw detection into the SDD 04 DetectedObject contract."""
+    x1, y1, x2, y2 = raw["bbox"]
+    iw, ih = float(raw["img_w"]), float(raw["img_h"])
+    distance = _classify_distance(raw["height_ratio"])
+    return DetectedObject(
+        name=raw["nome"],
+        confidence=round(float(raw["confidence"] or 0.0), 4),
+        x=max(0.0, min(1.0, x1 / iw)),
+        y=max(0.0, min(1.0, y1 / ih)),
+        width=max(0.0, min(1.0, (x2 - x1) / iw)),
+        height=max(0.0, min(1.0, (y2 - y1) / ih)),
+        distance=distance,
+        isClose=(distance == "perto"),
+    )
+
+
+def _to_legacy_object(raw: dict) -> dict:
+    """Shape expected by the backend's IAResponseDTO (backward-compat)."""
+    distance = _classify_distance(raw["height_ratio"])
     return {
-        "objetos": objetos_contrato,
-        "orientacao": orientacao,
-        "timestamp": int(_time.time()),
+        "nome": raw["nome"],
+        "distancia": distance,
+        "isClose": distance == "perto",
+        "lado": raw.get("lado"),
+        "confidence": raw.get("confidence"),
+        "distance_cm": raw.get("distance_cm"),
     }
 
 
-@app.post("/analisar")
-async def analisar(file: UploadFile, focal_length_px: Optional[float] = None, real_height_cm: Optional[float] = None, camera_id: Optional[str] = None):
-    contents = await file.read()
+def _build_orientation(raw_list: list[dict]) -> str:
+    sides: dict = {"esquerda": [], "centro": [], "direita": []}
+    scores: dict = {"esquerda": 0.0, "centro": 0.0, "direita": 0.0}
+    for r in raw_list:
+        lado = r.get("lado", "centro")
+        nome = str(r.get("nome", "")).lower()
+        conf = float(r.get("confidence") or 0.0)
+        is_close = _classify_distance(r["height_ratio"]) == "perto"
+        priority = _CLASS_PRIORITY.get(nome, 0.0)
+        sides.setdefault(lado, []).append(nome)
+        if nome in {"person", "pessoa"}:
+            scores[lado] += 2.5 + priority + conf
+        elif nome in _OBSTACLE_CLASSES or is_close:
+            scores[lado] += 1.0 + priority + conf
 
-    img = _load_image_from_bytes(contents)
+    parts = []
+    for lado in ["centro", "esquerda", "direita"]:
+        if any(n in {"person", "pessoa"} for n in sides.get(lado, [])):
+            parts.append("Pessoa à frente" if lado == "centro" else f"Pessoa à {lado}")
+    if scores["centro"] > 0:
+        free = "esquerda" if scores["esquerda"] == 0 else ("direita" if scores["direita"] == 0 else None)
+        parts.append(
+            f"Obstáculo à frente — siga para a {free}" if free
+            else "Obstáculo à frente — cuidado, espaço estreito"
+        )
+    else:
+        parts.append("Caminho livre à frente")
+    for lado in ["esquerda", "direita"]:
+        if sides.get(lado):
+            parts.append(f"{sides[lado][0]} à {lado}")
+    return ", ".join(parts)
 
+
+# ─── Error Helpers ────────────────────────────────────────────────────────────
+
+def _error(code: str, message: str, status: int) -> HTTPException:
+    return HTTPException(
+        status_code=status,
+        detail=ErrorResponse(
+            error=ErrorDetail(code=code, message=message),
+            timestamp=int(time.time()),
+        ).model_dump(),
+    )
+
+
+# ─── Routes: Health ───────────────────────────────────────────────────────────
+
+@app.get("/health", response_model=HealthResponse)
+def health():
+    loaded = _model is not None
+    gpu = _gpu_available()
+    device_str: Optional[str] = DEVICE
+    if loaded:
+        try:
+            md = getattr(_model, "model", None) or _model
+            for p in md.parameters():
+                device_str = str(p.device)
+                break
+        except Exception:
+            pass
+    return HealthResponse(
+        status="UP" if loaded else "DEGRADED",
+        modelLoaded=loaded,
+        device=device_str,
+        gpuAvailable=gpu,
+        inferenceReady=loaded,
+    )
+
+
+@app.get("/")
+async def root():
+    return FileResponse("static/index.html")
+
+
+# ─── Routes: Inference (SDD contract) ────────────────────────────────────────
+
+@app.post("/infer", response_model=InferResponse)
+async def infer(request: InferRequest):
+    """
+    SDD-compliant inference endpoint.
+
+    Accepts a JSON body with a base64-encoded JPEG frame.
+    Returns normalized detections following the shared DetectedObject contract.
+    """
+    # Reject oversized payloads before decoding (base64 adds ~33% overhead)
+    if len(request.image) * 3 // 4 > MAX_IMAGE_SIZE:
+        raise _error("PAYLOAD_TOO_LARGE", f"Image exceeds {MAX_IMAGE_SIZE} bytes", 413)
+
+    img = _base64_to_image(request.image)
     if img is None:
-        return {"error": "imagem inválida"}
-    return _process_image(img, focal_length_px, real_height_cm, camera_id=camera_id)
+        raise _error("INVALID_PAYLOAD", "Failed to decode base64 JPEG", 400)
 
+    t0 = time.time()
+    try:
+        raw = _detect(img)
+    except FileNotFoundError as exc:
+        raise _error("INFERENCE_ERROR", str(exc), 503)
+    except Exception:
+        raise _error("INFERENCE_ERROR", "Inference pipeline failed", 500)
+    inference_ms = round((time.time() - t0) * 1000, 2)
+
+    return InferResponse(
+        frameId=request.frameId,
+        timestamp=request.timestamp,
+        inferenceMs=inference_ms,
+        objects=[_to_detected_object(r) for r in raw],
+    )
+
+
+# ─── Routes: Legacy (/analisar — backend still calls this) ───────────────────
+
+@app.post("/analisar")
+async def analisar(
+    file: UploadFile,
+    focal_length_px: Optional[float] = None,
+    real_height_cm: Optional[float] = None,
+    camera_id: Optional[str] = None,
+):
+    contents = await file.read()
+    if len(contents) > MAX_IMAGE_SIZE:
+        return JSONResponse(
+            status_code=413,
+            content=ErrorResponse(
+                error=ErrorDetail(code="PAYLOAD_TOO_LARGE", message=f"Image exceeds {MAX_IMAGE_SIZE} bytes"),
+                timestamp=int(time.time()),
+            ).model_dump(),
+        )
+    img = _bytes_to_image(contents)
+    if img is None:
+        return JSONResponse(
+            status_code=400,
+            content=ErrorResponse(
+                error=ErrorDetail(code="INVALID_PAYLOAD", message="Invalid or unsupported image"),
+                timestamp=int(time.time()),
+            ).model_dump(),
+        )
+    try:
+        raw = _detect(img, camera_id=camera_id)
+    except FileNotFoundError as exc:
+        return JSONResponse(
+            status_code=503,
+            content=ErrorResponse(
+                error=ErrorDetail(code="INFERENCE_ERROR", message=str(exc)),
+                timestamp=int(time.time()),
+            ).model_dump(),
+        )
+    except Exception:
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error=ErrorDetail(code="INFERENCE_ERROR", message="Inference pipeline failed"),
+                timestamp=int(time.time()),
+            ).model_dump(),
+        )
+    return {
+        "objetos": [_to_legacy_object(r) for r in raw],
+        "orientacao": _build_orientation(raw),
+        "timestamp": int(time.time()),
+    }
+
+
+# ─── Routes: URL Inference (legacy) ──────────────────────────────────────────
 
 _PRIVATE_NETS = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -446,43 +529,88 @@ _PRIVATE_NETS = [
     ipaddress.ip_network("fc00::/7"),
 ]
 
-def _validar_url_publica(url: str) -> None:
-    """Bloqueia URLs que apontam para IPs privados/loopback (SSRF)."""
+
+def _validate_public_url(url: str) -> None:
     if not re.match(r"^https?://", url, re.IGNORECASE):
-        raise HTTPException(status_code=400, detail="URL deve usar http ou https")
-    from urllib.parse import urlparse
-    import socket
-    parsed = urlparse(url)
-    host = parsed.hostname
+        raise HTTPException(status_code=400, detail="URL must use http or https")
+    host = urlparse(url).hostname
     if not host:
-        raise HTTPException(status_code=400, detail="URL inválida")
+        raise HTTPException(status_code=400, detail="Invalid URL")
     try:
         ip = ipaddress.ip_address(socket.gethostbyname(host))
     except Exception:
-        raise HTTPException(status_code=400, detail="Não foi possível resolver o host da URL")
+        raise HTTPException(status_code=400, detail="Cannot resolve URL host")
     if any(ip in net for net in _PRIVATE_NETS):
-        raise HTTPException(status_code=400, detail="URL aponta para endereço privado — não permitido")
+        raise HTTPException(status_code=400, detail="URL points to a private address")
 
 
-class URLItem(BaseModel):
+class _URLItem(BaseModel):
     url: str
 
 
 @app.post("/analisar_url")
-async def analisar_url(item: URLItem, focal_length_px: Optional[float] = None, real_height_cm: Optional[float] = None, camera_id: Optional[str] = None):
-    url = item.url
-    _validar_url_publica(url)
+async def analisar_url(
+    item: _URLItem,
+    focal_length_px: Optional[float] = None,
+    real_height_cm: Optional[float] = None,
+    camera_id: Optional[str] = None,
+):
+    _validate_public_url(item.url)
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
-            resp = await client.get(url)
+            resp = await client.get(item.url)
             resp.raise_for_status()
             contents = resp.content
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail="Não foi possível baixar a imagem")
-    img = _load_image_from_bytes(contents)
-
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not download image")
+    img = _bytes_to_image(contents)
     if img is None:
-        raise HTTPException(status_code=400, detail="imagem inválida ou formato não suportado")
-    return _process_image(img, focal_length_px, real_height_cm, camera_id=camera_id)
+        raise HTTPException(status_code=400, detail="Invalid or unsupported image format")
+    raw = _detect(img, camera_id=camera_id)
+    return {
+        "objetos": [_to_legacy_object(r) for r in raw],
+        "orientacao": _build_orientation(raw),
+        "timestamp": int(time.time()),
+    }
+
+
+# ─── Routes: Model Management ─────────────────────────────────────────────────
+
+@app.get("/model")
+async def model_info():
+    loaded = _model is not None
+    device_str = None
+    classes = None
+    if loaded:
+        try:
+            names = getattr(_model, "names", None)
+            if isinstance(names, dict):
+                classes = [names[k] for k in sorted(names, key=lambda x: int(x))]
+            else:
+                classes = names
+            md = getattr(_model, "model", None) or _model
+            for p in md.parameters():
+                device_str = str(p.device)
+                break
+        except Exception:
+            pass
+    return {"loaded": loaded, "model_path": _model_path, "device": device_str, "classes": classes}
+
+
+@app.post("/model")
+async def model_set(item: dict, x_api_key: Optional[str] = Header(default=None)):
+    _require_api_key(x_api_key)
+    path = item.get("path") if isinstance(item, dict) else None
+    if not path:
+        raise HTTPException(status_code=400, detail='Provide JSON with key "path"')
+    if not Path(path).exists():
+        raise HTTPException(status_code=404, detail="Model file not found")
+    try:
+        global _model, _model_path
+        _model = YOLO(path)
+        _model_path = path
+        return {"model_path": _model_path}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
