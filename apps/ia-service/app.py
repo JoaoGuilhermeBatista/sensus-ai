@@ -29,7 +29,7 @@ from models import (
     InferResponse,
 )
 
-# ─── Environment ─────────────────────────────────────────────────────────────
+# â”€â”€â”€ Environment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # SDD-specified primary env vars; backward-compat aliases kept as fallbacks.
 
 CONFIDENCE_THRESHOLD = float(
@@ -49,7 +49,8 @@ _INFERENCE_IOU = float(os.environ.get("IA_INFERENCE_IOU", "0.45"))
 _INFERENCE_IMGSZ = int(os.environ.get("IA_INFERENCE_IMGSZ", "640"))
 _MIN_BOX_AREA_RATIO = float(os.environ.get("IA_MIN_BOX_AREA_RATIO", "0.0015"))
 _MAX_BOX_AREA_RATIO = float(os.environ.get("IA_MAX_BOX_AREA_RATIO", "0.85"))
-_MIN_BOX_ASPECT_RATIO = float(os.environ.get("IA_MIN_BOX_ASPECT_RATIO", "0.12"))
+_MIN_BOX_ASPECT_RATIO = float(
+    os.environ.get("IA_MIN_BOX_ASPECT_RATIO", "0.12"))
 _MAX_BOX_ASPECT_RATIO = float(os.environ.get("IA_MAX_BOX_ASPECT_RATIO", "8.0"))
 _MIN_PERSISTENCE = int(os.environ.get("IA_MIN_PERSISTENCE", "1"))
 _CAMERA_HISTORY_SIZE = int(os.environ.get("IA_CAMERA_HISTORY_SIZE", "5"))
@@ -60,9 +61,10 @@ _ENABLE_TRACKING = (
 
 # Distance classification thresholds (bbox height / image height)
 _DISTANCE_CLOSE_THRESHOLD = float(os.environ.get("IA_DISTANCE_CLOSE", "0.35"))
-_DISTANCE_MEDIUM_THRESHOLD = float(os.environ.get("IA_DISTANCE_MEDIUM", "0.12"))
+_DISTANCE_MEDIUM_THRESHOLD = float(
+    os.environ.get("IA_DISTANCE_MEDIUM", "0.12"))
 
-# ─── App ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€ App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 app = FastAPI(title="Sensus IA Service", version="1.0.0")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -74,15 +76,17 @@ def _preload_model() -> None:
     try:
         get_model()
     except Exception as exc:
-        print(f"[ia-service] WARNING: could not preload model at startup: {exc}")
+        print(
+            f"[ia-service] WARNING: could not preload model at startup: {exc}")
 
-# ─── Global Model State ───────────────────────────────────────────────────────
+# â”€â”€â”€ Global Model State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 
 _model: Optional[YOLO] = None
 _model_path: Optional[str] = None
 _history: defaultdict = defaultdict(lambda: deque(maxlen=_CAMERA_HISTORY_SIZE))
 
-# ─── Per-class Heuristics ────────────────────────────────────────────────────
+# â”€â”€â”€ Per-class Heuristics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _OBSTACLE_CLASSES = {
     "chair", "sofa", "couch", "bench", "person", "bicycle", "motorbike",
@@ -111,7 +115,7 @@ _CLASS_PRIORITY = {
     "laptop": 1.2, "backpack": 1.0, "bench": 1.2,
 }
 
-# ─── API Key Auth (optional) ─────────────────────────────────────────────────
+# â”€â”€â”€ API Key Auth (optional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _API_KEY = os.environ.get("IA_API_KEY", "").strip()
 
@@ -121,14 +125,15 @@ def _require_api_key(x_api_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-# ─── Model Loading ────────────────────────────────────────────────────────────
+# â”€â”€â”€ Model Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def get_model() -> YOLO:
     global _model, _model_path
     if _model is None:
         path = MODEL_PATH or "yolov8n.pt"
         if path and not Path(path).exists():
-            print(f"[ia-service] Model not found at '{path}', falling back to yolov8n.pt (auto-download)")
+            print(
+                f"[ia-service] Model not found at '{path}', falling back to yolov8n.pt (auto-download)")
             path = "yolov8n.pt"
         print(f"[ia-service] Loading model: {path}  device={DEVICE}")
         _model = YOLO(path)
@@ -148,7 +153,7 @@ def _half_precision() -> bool:
     return _gpu_available()
 
 
-# ─── Image Utilities ──────────────────────────────────────────────────────────
+# â”€â”€â”€ Image Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _resize_to_imgsz(img: np.ndarray) -> np.ndarray:
     h, w = img.shape[:2]
@@ -189,16 +194,16 @@ def _box_is_plausible(x1: float, y1: float, x2: float, y2: float, w: int, h: int
     return _MIN_BOX_ASPECT_RATIO <= aspect <= _MAX_BOX_ASPECT_RATIO
 
 
-# ─── Distance Classification ──────────────────────────────────────────────────
+# â”€â”€â”€ Distance Classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _classify_distance(height_ratio: float) -> str:
     """
     Classify distance based on bounding-box height relative to the image.
 
     Thresholds:
-      >= CLOSE  → perto   (isClose=True)
-      >= MEDIUM → medio
-      <  MEDIUM → longe
+      >= CLOSE  â†’ perto   (isClose=True)
+      >= MEDIUM â†’ medio
+      <  MEDIUM â†’ longe
     """
     if height_ratio >= _DISTANCE_CLOSE_THRESHOLD:
         return "perto"
@@ -207,7 +212,7 @@ def _classify_distance(height_ratio: float) -> str:
     return "longe"
 
 
-# ─── Core Inference Pipeline ──────────────────────────────────────────────────
+# â”€â”€â”€ Core Inference Pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _run_inference(img: np.ndarray):
     model = get_model()
@@ -248,7 +253,8 @@ def _coalesce_history(camera_id: Optional[str], detections: list[dict]) -> list[
     for frame in history:
         for d in frame:
             key = (
-                d.get("track_id") if d.get("track_id") is not None else d.get("nome"),
+                d.get("track_id") if d.get(
+                    "track_id") is not None else d.get("nome"),
                 d.get("lado"),
             )
             counts[key] += 1
@@ -271,13 +277,15 @@ def _detect(img: np.ndarray, camera_id: Optional[str] = None) -> list[dict]:
     """
     h, w = img.shape[:2]
     use_tracking = _ENABLE_TRACKING and camera_id is not None
-    results = _run_tracked_inference(img) if use_tracking else _run_inference(img)
+    results = _run_tracked_inference(
+        img) if use_tracking else _run_inference(img)
     model = get_model()
     raw: list[dict] = []
 
     for r in results:
         for box in r.boxes:
-            conf = float(box.conf[0]) if getattr(box, "conf", None) is not None else None
+            conf = float(box.conf[0]) if getattr(
+                box, "conf", None) is not None else None
             cls = int(box.cls[0])
             nome = str(model.names[cls])
 
@@ -324,7 +332,7 @@ def _detect(img: np.ndarray, camera_id: Optional[str] = None) -> list[dict]:
     return _coalesce_history(camera_id, raw)
 
 
-# ─── Normalization ────────────────────────────────────────────────────────────
+# â”€â”€â”€ Normalization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _to_detected_object(raw: dict) -> DetectedObject:
     """Normalize a raw detection into the SDD 04 DetectedObject contract."""
@@ -353,6 +361,10 @@ def _to_legacy_object(raw: dict) -> dict:
         "lado": raw.get("lado"),
         "confidence": raw.get("confidence"),
         "distance_cm": raw.get("distance_cm"),
+        "bboxX": max(0.0, min(1.0, raw["bbox"][0] / float(raw["img_w"]))),
+        "bboxY": max(0.0, min(1.0, raw["bbox"][1] / float(raw["img_h"]))),
+        "bboxWidth": max(0.0, min(1.0, (raw["bbox"][2] - raw["bbox"][0]) / float(raw["img_w"]))),
+        "bboxHeight": max(0.0, min(1.0, (raw["bbox"][3] - raw["bbox"][1]) / float(raw["img_h"]))),
     }
 
 
@@ -374,22 +386,24 @@ def _build_orientation(raw_list: list[dict]) -> str:
     parts = []
     for lado in ["centro", "esquerda", "direita"]:
         if any(n in {"person", "pessoa"} for n in sides.get(lado, [])):
-            parts.append("Pessoa à frente" if lado == "centro" else f"Pessoa à {lado}")
+            parts.append("Pessoa Ã  frente" if lado ==
+                         "centro" else f"Pessoa Ã  {lado}")
     if scores["centro"] > 0:
-        free = "esquerda" if scores["esquerda"] == 0 else ("direita" if scores["direita"] == 0 else None)
+        free = "esquerda" if scores["esquerda"] == 0 else (
+            "direita" if scores["direita"] == 0 else None)
         parts.append(
-            f"Obstáculo à frente — siga para a {free}" if free
-            else "Obstáculo à frente — cuidado, espaço estreito"
+            f"ObstÃ¡culo Ã  frente â€” siga para a {free}" if free
+            else "ObstÃ¡culo Ã  frente â€” cuidado, espaÃ§o estreito"
         )
     else:
-        parts.append("Caminho livre à frente")
+        parts.append("Caminho livre Ã  frente")
     for lado in ["esquerda", "direita"]:
         if sides.get(lado):
-            parts.append(f"{sides[lado][0]} à {lado}")
+            parts.append(f"{sides[lado][0]} Ã  {lado}")
     return ", ".join(parts)
 
 
-# ─── Error Helpers ────────────────────────────────────────────────────────────
+# â”€â”€â”€ Error Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _error(code: str, message: str, status: int) -> HTTPException:
     return HTTPException(
@@ -401,7 +415,7 @@ def _error(code: str, message: str, status: int) -> HTTPException:
     )
 
 
-# ─── Routes: Health ───────────────────────────────────────────────────────────
+# â”€â”€â”€ Routes: Health â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/health", response_model=HealthResponse)
 def health():
@@ -430,7 +444,7 @@ async def root():
     return FileResponse("static/index.html")
 
 
-# ─── Routes: Inference (SDD contract) ────────────────────────────────────────
+# â”€â”€â”€ Routes: Inference (SDD contract) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/infer", response_model=InferResponse)
 async def infer(request: InferRequest):
@@ -442,7 +456,8 @@ async def infer(request: InferRequest):
     """
     # Reject oversized payloads before decoding (base64 adds ~33% overhead)
     if len(request.image) * 3 // 4 > MAX_IMAGE_SIZE:
-        raise _error("PAYLOAD_TOO_LARGE", f"Image exceeds {MAX_IMAGE_SIZE} bytes", 413)
+        raise _error("PAYLOAD_TOO_LARGE",
+                     f"Image exceeds {MAX_IMAGE_SIZE} bytes", 413)
 
     img = _base64_to_image(request.image)
     if img is None:
@@ -465,7 +480,7 @@ async def infer(request: InferRequest):
     )
 
 
-# ─── Routes: Legacy (/analisar — backend still calls this) ───────────────────
+# â”€â”€â”€ Routes: Legacy (/analisar â€” backend still calls this) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/analisar")
 async def analisar(
@@ -479,7 +494,8 @@ async def analisar(
         return JSONResponse(
             status_code=413,
             content=ErrorResponse(
-                error=ErrorDetail(code="PAYLOAD_TOO_LARGE", message=f"Image exceeds {MAX_IMAGE_SIZE} bytes"),
+                error=ErrorDetail(code="PAYLOAD_TOO_LARGE",
+                                  message=f"Image exceeds {MAX_IMAGE_SIZE} bytes"),
                 timestamp=int(time.time()),
             ).model_dump(),
         )
@@ -488,7 +504,8 @@ async def analisar(
         return JSONResponse(
             status_code=400,
             content=ErrorResponse(
-                error=ErrorDetail(code="INVALID_PAYLOAD", message="Invalid or unsupported image"),
+                error=ErrorDetail(code="INVALID_PAYLOAD",
+                                  message="Invalid or unsupported image"),
                 timestamp=int(time.time()),
             ).model_dump(),
         )
@@ -506,7 +523,8 @@ async def analisar(
         return JSONResponse(
             status_code=500,
             content=ErrorResponse(
-                error=ErrorDetail(code="INFERENCE_ERROR", message="Inference pipeline failed"),
+                error=ErrorDetail(code="INFERENCE_ERROR",
+                                  message="Inference pipeline failed"),
                 timestamp=int(time.time()),
             ).model_dump(),
         )
@@ -517,7 +535,7 @@ async def analisar(
     }
 
 
-# ─── Routes: URL Inference (legacy) ──────────────────────────────────────────
+# â”€â”€â”€ Routes: URL Inference (legacy) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _PRIVATE_NETS = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -532,7 +550,8 @@ _PRIVATE_NETS = [
 
 def _validate_public_url(url: str) -> None:
     if not re.match(r"^https?://", url, re.IGNORECASE):
-        raise HTTPException(status_code=400, detail="URL must use http or https")
+        raise HTTPException(
+            status_code=400, detail="URL must use http or https")
     host = urlparse(url).hostname
     if not host:
         raise HTTPException(status_code=400, detail="Invalid URL")
@@ -541,7 +560,8 @@ def _validate_public_url(url: str) -> None:
     except Exception:
         raise HTTPException(status_code=400, detail="Cannot resolve URL host")
     if any(ip in net for net in _PRIVATE_NETS):
-        raise HTTPException(status_code=400, detail="URL points to a private address")
+        raise HTTPException(
+            status_code=400, detail="URL points to a private address")
 
 
 class _URLItem(BaseModel):
@@ -567,7 +587,8 @@ async def analisar_url(
         raise HTTPException(status_code=400, detail="Could not download image")
     img = _bytes_to_image(contents)
     if img is None:
-        raise HTTPException(status_code=400, detail="Invalid or unsupported image format")
+        raise HTTPException(
+            status_code=400, detail="Invalid or unsupported image format")
     raw = _detect(img, camera_id=camera_id)
     return {
         "objetos": [_to_legacy_object(r) for r in raw],
@@ -576,7 +597,7 @@ async def analisar_url(
     }
 
 
-# ─── Routes: Model Management ─────────────────────────────────────────────────
+# â”€â”€â”€ Routes: Model Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/model")
 async def model_info():
@@ -587,7 +608,8 @@ async def model_info():
         try:
             names = getattr(_model, "names", None)
             if isinstance(names, dict):
-                classes = [names[k] for k in sorted(names, key=lambda x: int(x))]
+                classes = [names[k]
+                           for k in sorted(names, key=lambda x: int(x))]
             else:
                 classes = names
             md = getattr(_model, "model", None) or _model
@@ -604,7 +626,8 @@ async def model_set(item: dict, x_api_key: Optional[str] = Header(default=None))
     _require_api_key(x_api_key)
     path = item.get("path") if isinstance(item, dict) else None
     if not path:
-        raise HTTPException(status_code=400, detail='Provide JSON with key "path"')
+        raise HTTPException(
+            status_code=400, detail='Provide JSON with key "path"')
     if not Path(path).exists():
         raise HTTPException(status_code=404, detail="Model file not found")
     try:

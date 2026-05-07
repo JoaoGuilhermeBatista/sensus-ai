@@ -43,7 +43,7 @@ class AnaliseControllerTest {
     @Test
     void postAnalisar_deveRetornar200QuandoSucesso() throws Exception {
         AnaliseResponseDTO dto = new AnaliseResponseDTO(1L, 1711370000L,
-                List.of(new ObjetoDetectadoDTO("person", "perto", true)));
+                List.of(new ObjetoDetectadoDTO("person", "perto", true, null, null, null, null)));
 
         when(analiseService.processarImagem(any())).thenReturn(dto);
 
