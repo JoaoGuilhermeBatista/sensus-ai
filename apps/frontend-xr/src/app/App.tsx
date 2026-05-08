@@ -115,7 +115,12 @@ function getBbox(obj: ObjetoDetectado) {
   }
 }
 
-function drawBboxes(canvas: HTMLCanvasElement, objetos: ObjetoDetectado[], showLabels: boolean) {
+function drawBboxes(
+  canvas: HTMLCanvasElement,
+  objetos: ObjetoDetectado[],
+  showLabels: boolean,
+  video?: HTMLVideoElement | null,
+) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   const dpr = window.devicePixelRatio || 1
@@ -128,8 +133,7 @@ function drawBboxes(canvas: HTMLCanvasElement, objetos: ObjetoDetectado[], showL
 
   // The video uses object-fit:contain so there may be letterbox/pillarbox bars.
   // Compute the active video area inside the canvas so bbox coords map correctly.
-  const videoEl = canvas.previousElementSibling?.querySelector?.('video') as HTMLVideoElement | null
-  const vw = videoEl?.videoWidth || cw, vh = videoEl?.videoHeight || ch
+  const vw = video?.videoWidth || cw, vh = video?.videoHeight || ch
   const scale = Math.min(cw / vw, ch / vh)
   const activeW = vw * scale, activeH = vh * scale
   const offsetX = (cw - activeW) / 2, offsetY = (ch - activeH) / 2
@@ -395,8 +399,8 @@ function LiveView({ analise, history, addSnapshot, settings, wsState }: any) {
 
   useEffect(() => {
     if (!canvasRef.current || !analise) return
-    drawBboxes(canvasRef.current, analise.objetos, settings.showLabels)
-  }, [analise, settings.showLabels])
+    drawBboxes(canvasRef.current, analise.objetos, settings.showLabels, video)
+  }, [analise, settings.showLabels, video])
 
   const takeSnapshot = useCallback(() => {
     if (!video) return
@@ -620,8 +624,8 @@ function XRView({ onExit, analise, wsState }: any) {
   useFrameSender(video, ws === 'OPEN')
   useEffect(() => {
     if (!canvasRef.current || !analise) return
-    drawBboxes(canvasRef.current, analise.objetos, true)
-  }, [analise])
+    drawBboxes(canvasRef.current, analise.objetos, true, video)
+  }, [analise, video])
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onExit() }
     window.addEventListener('keydown', handler)

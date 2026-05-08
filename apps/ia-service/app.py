@@ -387,20 +387,20 @@ def _build_orientation(raw_list: list[dict]) -> str:
     parts = []
     for lado in ["centro", "esquerda", "direita"]:
         if any(n in {"person", "pessoa"} for n in sides.get(lado, [])):
-            parts.append("Pessoa Ã  frente" if lado ==
-                         "centro" else f"Pessoa Ã  {lado}")
+            parts.append("Pessoa à frente" if lado ==
+                         "centro" else f"Pessoa à {lado}")
     if scores["centro"] > 0:
         free = "esquerda" if scores["esquerda"] == 0 else (
             "direita" if scores["direita"] == 0 else None)
         parts.append(
-            f"ObstÃ¡culo Ã  frente â€” siga para a {free}" if free
-            else "ObstÃ¡culo Ã  frente â€” cuidado, espaÃ§o estreito"
+            f"Obstáculo à frente — siga para a {free}" if free
+            else "Obstáculo à frente — cuidado, espaço estreito"
         )
     else:
-        parts.append("Caminho livre Ã  frente")
+        parts.append("Caminho livre à frente")
     for lado in ["esquerda", "direita"]:
         if sides.get(lado):
-            parts.append(f"{sides[lado][0]} Ã  {lado}")
+            parts.append(f"{sides[lado][0]} à {lado}")
     return ", ".join(parts)
 
 
@@ -481,7 +481,7 @@ async def infer(request: InferRequest):
     )
 
 
-# â”€â”€â”€ Routes: Legacy (/analisar â€” backend still calls this) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â”€â”€â”€ Routes: Legacy (/analisar — backend still calls this) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/analisar")
 async def analisar(

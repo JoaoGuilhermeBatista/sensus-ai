@@ -88,6 +88,6 @@ public class IAIntegrationService {
                         o.height()
                 ))
                 .toList();
-        return new IAResponseDTO(objetos, infer.timestamp());
+        return new IAResponseDTO(objetos, timestamp);
     }
 }

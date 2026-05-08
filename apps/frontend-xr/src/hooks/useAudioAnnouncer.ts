@@ -30,7 +30,7 @@ export function useAudioAnnouncer() {
     const eligible = objects
       .filter(obj => {
         const last = lastAnnounced.current.get(obj.nome) ?? 0
-        return now - last >= DEBOUNCE_MS[obj.distancia]
+        return now - last >= (DEBOUNCE_MS[obj.distancia] ?? 5_000)
       })
       .sort((a, b) => priorityScore(b) - priorityScore(a))
       .slice(0, MAX_OBJECTS_PER_CYCLE)
