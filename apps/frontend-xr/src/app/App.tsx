@@ -125,10 +125,20 @@ function drawBboxes(canvas: HTMLCanvasElement, objetos: ObjetoDetectado[], showL
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, cw, ch)
+
+  // The video uses object-fit:contain so there may be letterbox/pillarbox bars.
+  // Compute the active video area inside the canvas so bbox coords map correctly.
+  const videoEl = canvas.previousElementSibling?.querySelector?.('video') as HTMLVideoElement | null
+  const vw = videoEl?.videoWidth || cw, vh = videoEl?.videoHeight || ch
+  const scale = Math.min(cw / vw, ch / vh)
+  const activeW = vw * scale, activeH = vh * scale
+  const offsetX = (cw - activeW) / 2, offsetY = (ch - activeH) / 2
+
   objetos.forEach(obj => {
     const { x, y, w, h } = getBbox(obj)
     if (x == null) return
-    const rx = x * cw, ry = y * ch, rw = w * cw, rh = h * ch
+    const rx = offsetX + x * activeW, ry = offsetY + y * activeH
+    const rw = w * activeW, rh = h * activeH
     const color = colorOf(obj.nome)
     const t = 10
     ctx.strokeStyle = color; ctx.lineWidth = 1.5

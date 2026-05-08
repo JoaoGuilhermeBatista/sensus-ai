@@ -91,7 +91,7 @@ _history: defaultdict = defaultdict(lambda: deque(maxlen=_CAMERA_HISTORY_SIZE))
 _OBSTACLE_CLASSES = {
     "chair", "sofa", "couch", "bench", "person", "bicycle", "motorbike",
     "car", "bed", "dining table", "potted plant", "tv", "laptop", "backpack",
-    "suitcase", "handbag", "bottle", "umbrella", "table",
+    "suitcase", "handbag", "bottle", "umbrella", "table", "cell phone",
 }
 
 _CLASS_REAL_HEIGHT_CM = {
@@ -106,6 +106,7 @@ _CLASS_MIN_CONF = {
     "chair": 0.28, "cadeira": 0.28,
     "backpack": 0.30, "laptop": 0.35,
     "bench": 0.28, "table": 0.28, "mesa": 0.28,
+    "cell phone": 0.20,
 }
 
 _CLASS_PRIORITY = {
