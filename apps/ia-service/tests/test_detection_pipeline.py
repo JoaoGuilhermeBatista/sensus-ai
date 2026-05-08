@@ -266,9 +266,13 @@ class TestTargetObjectClasses:
         # SDD uses "dining table" for COCO table class
         assert "dining table" in self.app._OBSTACLE_CLASSES
 
-    def test_cell_phone_not_obstacle_class_but_detectable(self):
-        # cell phone is not in obstacle classes but still detected (no class filter)
-        assert "cell phone" not in self.app._OBSTACLE_CLASSES
+    def test_cell_phone_is_obstacle_class_and_detectable(self):
+        # cell phone is an obstacle class so it contributes to orientation scoring
+        assert "cell phone" in self.app._OBSTACLE_CLASSES
+
+    def test_cell_phone_min_conf_lower_than_default(self):
+        # cell phone uses a lower threshold (0.20) to detect reliably at distance
+        assert self.app._CLASS_MIN_CONF["cell phone"] == 0.20
 
     def test_person_min_conf(self):
         assert self.app._CLASS_MIN_CONF["person"] == 0.30

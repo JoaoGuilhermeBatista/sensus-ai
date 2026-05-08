@@ -4,6 +4,7 @@ import { StatusIndicator } from '../components/StatusIndicator'
 import { ConnectionGuard } from '../components/ConnectionGuard'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useFrameSender } from '../hooks/useFrameSender'
+import { useAudioAnnouncer } from '../hooks/useAudioAnnouncer'
 import { webSocketService } from '../services/websocket.service'
 import type { AnaliseResponse } from '../types/AnaliseResponse'
 import type { ObjetoDetectado } from '../types/ObjetoDetectado'
@@ -114,7 +115,12 @@ function getBbox(obj: ObjetoDetectado) {
   }
 }
 
-function drawBboxes(canvas: HTMLCanvasElement, objetos: ObjetoDetectado[], showLabels: boolean) {
+function drawBboxes(
+  canvas: HTMLCanvasElement,
+  objetos: ObjetoDetectado[],
+  showLabels: boolean,
+  video?: HTMLVideoElement | null,
+) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   const dpr = window.devicePixelRatio || 1
@@ -124,10 +130,19 @@ function drawBboxes(canvas: HTMLCanvasElement, objetos: ObjetoDetectado[], showL
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, cw, ch)
+
+  // The video uses object-fit:contain so there may be letterbox/pillarbox bars.
+  // Compute the active video area inside the canvas so bbox coords map correctly.
+  const vw = video?.videoWidth || cw, vh = video?.videoHeight || ch
+  const scale = Math.min(cw / vw, ch / vh)
+  const activeW = vw * scale, activeH = vh * scale
+  const offsetX = (cw - activeW) / 2, offsetY = (ch - activeH) / 2
+
   objetos.forEach(obj => {
     const { x, y, w, h } = getBbox(obj)
     if (x == null) return
-    const rx = x * cw, ry = y * ch, rw = w * cw, rh = h * ch
+    const rx = offsetX + x * activeW, ry = offsetY + y * activeH
+    const rw = w * activeW, rh = h * activeH
     const color = colorOf(obj.nome)
     const t = 10
     ctx.strokeStyle = color; ctx.lineWidth = 1.5
@@ -384,8 +399,8 @@ function LiveView({ analise, history, addSnapshot, settings, wsState }: any) {
 
   useEffect(() => {
     if (!canvasRef.current || !analise) return
-    drawBboxes(canvasRef.current, analise.objetos, settings.showLabels)
-  }, [analise, settings.showLabels])
+    drawBboxes(canvasRef.current, analise.objetos, settings.showLabels, video)
+  }, [analise, settings.showLabels, video])
 
   const takeSnapshot = useCallback(() => {
     if (!video) return
@@ -609,8 +624,8 @@ function XRView({ onExit, analise, wsState }: any) {
   useFrameSender(video, ws === 'OPEN')
   useEffect(() => {
     if (!canvasRef.current || !analise) return
-    drawBboxes(canvasRef.current, analise.objetos, true)
-  }, [analise])
+    drawBboxes(canvasRef.current, analise.objetos, true, video)
+  }, [analise, video])
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onExit() }
     window.addEventListener('keydown', handler)
@@ -672,6 +687,8 @@ export function App() {
     showLabels: true, showDistance: true, ttsEnabled: false,
   })
 
+  const { announce } = useAudioAnnouncer()
+
   const seenRef = useRef<Map<string, number>>(new Map())
   const addHistory = useCallback((evt: any) => {
     const last = seenRef.current.get(evt.nome) ?? 0
@@ -697,17 +714,12 @@ export function App() {
             addHistory({ ...obj, ts: Date.now() })
           }
         })
-        if ((settings as any).ttsEnabled && data.objetos.length > 0) {
-          const obj = data.objetos[0]
-          const utter = new SpeechSynthesisUtterance(`${ptOf(obj.nome)}, ${obj.distancia}`)
-          utter.lang = 'pt-BR'; utter.rate = 1.05
-          try { speechSynthesis.speak(utter) } catch {}
-        }
+        announce(data.objetos, (settings as any).ttsEnabled ?? false)
       }
     }
     webSocketService.onMessage(handler)
     return () => webSocketService.offMessage(handler)
-  }, [addHistory, settings])
+  }, [addHistory, announce, settings])
 
   if (xrMode) return <XRView onExit={() => setXrMode(false)} analise={analise} wsState={wsState}/>
 
