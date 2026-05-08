@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react'
 import type { ObjetoDetectado } from '../types/ObjetoDetectado'
+import { buildDirectionalMessage } from '../utils/direction.utils'
 
 // How long (ms) before the same object can be announced again per distance
 const DEBOUNCE_MS: Record<string, number> = {
@@ -9,26 +10,6 @@ const DEBOUNCE_MS: Record<string, number> = {
 }
 
 const MAX_OBJECTS_PER_CYCLE = 2
-
-const PT_LABEL: Record<string, string> = {
-  person: 'pessoa', bicycle: 'bicicleta', car: 'carro', motorcycle: 'moto',
-  bus: 'ônibus', truck: 'caminhão', chair: 'cadeira', couch: 'sofá',
-  bed: 'cama', 'dining table': 'mesa', toilet: 'vaso sanitário', tv: 'tv',
-  laptop: 'notebook', 'cell phone': 'celular', bottle: 'garrafa',
-  backpack: 'mochila', bench: 'banco', umbrella: 'guarda-chuva',
-  sink: 'pia', refrigerator: 'geladeira', book: 'livro',
-}
-
-function ptOf(name: string): string {
-  return PT_LABEL[name.toLowerCase()] ?? name
-}
-
-function buildMessage(obj: ObjetoDetectado): string {
-  const label = ptOf(obj.nome)
-  if (obj.isClose) return `Atenção! ${label}, muito próximo`
-  if (obj.distancia === 'medio') return `${label}, à distância média`
-  return `${label} detectado`
-}
 
 function priorityScore(obj: ObjetoDetectado): number {
   if (obj.isClose) return 3
@@ -55,7 +36,7 @@ export function useAudioAnnouncer() {
       .slice(0, MAX_OBJECTS_PER_CYCLE)
 
     for (const obj of eligible) {
-      const utterance = new SpeechSynthesisUtterance(buildMessage(obj))
+      const utterance = new SpeechSynthesisUtterance(buildDirectionalMessage(obj))
       utterance.lang = 'pt-BR'
       utterance.rate = obj.isClose ? 1.15 : 1.0
       utterance.pitch = obj.isClose ? 1.2 : 1.0
