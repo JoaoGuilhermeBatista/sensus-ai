@@ -4,6 +4,7 @@ import { StatusIndicator } from '../components/StatusIndicator'
 import { ConnectionGuard } from '../components/ConnectionGuard'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useFrameSender } from '../hooks/useFrameSender'
+import { buildDirectionalMessage } from '../utils/direction.utils'
 import { webSocketService } from '../services/websocket.service'
 import type { AnaliseResponse } from '../types/AnaliseResponse'
 import type { ObjetoDetectado } from '../types/ObjetoDetectado'
@@ -699,8 +700,9 @@ export function App() {
         })
         if ((settings as any).ttsEnabled && data.objetos.length > 0) {
           const obj = data.objetos[0]
-          const utter = new SpeechSynthesisUtterance(`${ptOf(obj.nome)}, ${obj.distancia}`)
-          utter.lang = 'pt-BR'; utter.rate = 1.05
+          const utter = new SpeechSynthesisUtterance(buildDirectionalMessage(obj))
+          utter.lang = 'pt-BR'
+          utter.rate = obj.isClose ? 1.15 : 1.05
           try { speechSynthesis.speak(utter) } catch {}
         }
       }
