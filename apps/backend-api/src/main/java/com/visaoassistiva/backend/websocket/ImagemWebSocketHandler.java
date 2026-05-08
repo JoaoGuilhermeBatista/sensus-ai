@@ -1,5 +1,6 @@
 package com.visaoassistiva.backend.websocket;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visaoassistiva.backend.dto.request.WebSocketImagemPayload;
 import com.visaoassistiva.backend.dto.response.AnaliseResponseDTO;
@@ -42,7 +43,16 @@ public class ImagemWebSocketHandler extends AbstractWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        WebSocketImagemPayload payload = objectMapper.readValue(message.getPayload(), WebSocketImagemPayload.class);
+        JsonNode root = objectMapper.readTree(message.getPayload());
+
+        // SDD 04: heartbeat events must be handled without triggering inference
+        String type = root.path("type").asText("");
+        if ("heartbeat".equals(type)) {
+            log.debug("[WEBSOCKET] Heartbeat recebido: sessionId={}", session.getId());
+            return;
+        }
+
+        WebSocketImagemPayload payload = objectMapper.treeToValue(root, WebSocketImagemPayload.class);
         if (payload.dados() == null || payload.dados().isBlank()) {
             return;
         }

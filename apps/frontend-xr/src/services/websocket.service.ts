@@ -1,4 +1,5 @@
 import { config } from '../config/app.config'
+import { HeartbeatService } from './heartbeat.service'
 
 type MessageCallback = (data: unknown) => void
 type StateCallback = (state: 'CONNECTING' | 'OPEN' | 'CLOSED') => void
@@ -8,6 +9,7 @@ class WebSocketService {
   private messageCallbacks: MessageCallback[] = []
   private stateCallbacks: StateCallback[] = []
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private heartbeat: HeartbeatService = new HeartbeatService((payload) => this.send(payload))
 
   connect(): void {
     if (this.socket?.readyState === WebSocket.OPEN) return
@@ -19,6 +21,7 @@ class WebSocketService {
     this.socket.onopen = () => {
       console.log('[WS] connected')
       this.notifyState('OPEN')
+      this.heartbeat.start()
     }
 
     this.socket.onmessage = (event) => {
@@ -32,6 +35,7 @@ class WebSocketService {
 
     this.socket.onclose = () => {
       console.warn('[WS] closed, reconnecting in 2s...')
+      this.heartbeat.stop()
       this.notifyState('CLOSED')
       this.scheduleReconnect()
     }
@@ -64,6 +68,7 @@ class WebSocketService {
   }
 
   disconnect(): void {
+    this.heartbeat.stop()
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null

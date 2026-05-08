@@ -10,7 +10,7 @@ Backend de visão assistiva com IA. Recebe frames de imagem, encaminha ao servi�
 
 Todos os endpoints REST (exceto paginação) retornam um envelope padrão:
 
-```json
+```json 
 {
   "sucesso": true,
   "mensagem": "OK",

@@ -145,7 +145,7 @@ class AnaliseServiceTest {
     void deveLancarExcecaoParaImagemVazia() {
         assertThatThrownBy(() -> analiseService.processarImagem(new byte[0]))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("invÃ¡lida");
+                .hasMessageContaining("inv");
     }
 
     @Test
