@@ -3,7 +3,6 @@ package com.visaoassistiva.backend.integration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visaoassistiva.backend.dto.IAResponseDTO;
 import com.visaoassistiva.backend.dto.infer.InferDetectedObjectDTO;
-import com.visaoassistiva.backend.dto.infer.InferRequestDTO;
 import com.visaoassistiva.backend.dto.infer.InferResponseDTO;
 import com.visaoassistiva.backend.exception.IAServiceException;
 import org.junit.jupiter.api.Test;
@@ -14,7 +13,6 @@ import org.springframework.web.reactive.function.client.ExchangeFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import java.util.Base64;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;

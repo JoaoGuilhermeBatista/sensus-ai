@@ -1,11 +1,14 @@
 FROM node:20-alpine
 
-WORKDIR /app
+# Build context is the monorepo root so ../../packages/shared-contracts resolves correctly
+WORKDIR /app/apps/frontend-xr
 
-COPY package*.json ./
-RUN npm install
+COPY packages/shared-contracts /app/packages/shared-contracts/
 
-COPY . .
+COPY apps/frontend-xr/package*.json ./
+RUN npm ci
+
+COPY apps/frontend-xr/ ./
 
 EXPOSE 5173
 

@@ -8,6 +8,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 
 import java.time.Duration;
+import java.util.Objects;
 
 @Configuration
 public class WebClientConfig {
@@ -19,8 +20,8 @@ public class WebClientConfig {
                 .responseTimeout(Duration.ofMillis(props.getIa().getTimeoutReadMs()));
 
         return WebClient.builder()
-                .baseUrl(props.getIa().getBaseUrl())
-                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .baseUrl(Objects.requireNonNull(props.getIa().getBaseUrl(), "IA baseUrl must be configured"))
+                .clientConnector(new ReactorClientHttpConnector(Objects.requireNonNull(httpClient)))
                 .codecs(conf -> conf.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
                 .build();
     }

@@ -9,6 +9,7 @@ import com.visaoassistiva.backend.service.AnaliseService;
 import com.visaoassistiva.backend.service.RateLimiterService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
@@ -36,13 +37,13 @@ public class ImagemWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) {
+    public void afterConnectionEstablished(@NonNull WebSocketSession session) {
         log.debug("[WEBSOCKET] Nova conexão: sessionId={} origin={}",
                 session.getId(), session.getRemoteAddress());
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+    protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) throws Exception {
         JsonNode root = objectMapper.readTree(message.getPayload());
 
         // SDD 04: heartbeat events must be handled without triggering inference
@@ -61,19 +62,19 @@ public class ImagemWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     @Override
-    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
+    protected void handleBinaryMessage(@NonNull WebSocketSession session, @NonNull BinaryMessage message) throws Exception {
         byte[] imagem = message.getPayload().array();
         processarMensagem(session, imagem);
     }
 
     @Override
-    public void handleTransportError(WebSocketSession session, Throwable exception) {
+    public void handleTransportError(@NonNull WebSocketSession session, @NonNull Throwable exception) {
         log.error("[WEBSOCKET] Erro de transporte: sessionId={} erro={}",
                 session.getId(), exception.getMessage());
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+    public void afterConnectionClosed(@NonNull WebSocketSession session, @NonNull CloseStatus status) {
         rateLimiterService.removerSessao(session.getId());
         log.debug("[WEBSOCKET] Conexão encerrada: sessionId={} status={}", session.getId(), status);
     }
