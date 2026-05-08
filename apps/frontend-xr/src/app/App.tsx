@@ -4,6 +4,7 @@ import { StatusIndicator } from '../components/StatusIndicator'
 import { ConnectionGuard } from '../components/ConnectionGuard'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useFrameSender } from '../hooks/useFrameSender'
+import { useAudioAnnouncer } from '../hooks/useAudioAnnouncer'
 import { webSocketService } from '../services/websocket.service'
 import type { AnaliseResponse } from '../types/AnaliseResponse'
 import type { ObjetoDetectado } from '../types/ObjetoDetectado'
@@ -672,6 +673,8 @@ export function App() {
     showLabels: true, showDistance: true, ttsEnabled: false,
   })
 
+  const { announce } = useAudioAnnouncer()
+
   const seenRef = useRef<Map<string, number>>(new Map())
   const addHistory = useCallback((evt: any) => {
     const last = seenRef.current.get(evt.nome) ?? 0
@@ -697,17 +700,12 @@ export function App() {
             addHistory({ ...obj, ts: Date.now() })
           }
         })
-        if ((settings as any).ttsEnabled && data.objetos.length > 0) {
-          const obj = data.objetos[0]
-          const utter = new SpeechSynthesisUtterance(`${ptOf(obj.nome)}, ${obj.distancia}`)
-          utter.lang = 'pt-BR'; utter.rate = 1.05
-          try { speechSynthesis.speak(utter) } catch {}
-        }
+        announce(data.objetos, (settings as any).ttsEnabled ?? false)
       }
     }
     webSocketService.onMessage(handler)
     return () => webSocketService.offMessage(handler)
-  }, [addHistory, settings])
+  }, [addHistory, announce, settings])
 
   if (xrMode) return <XRView onExit={() => setXrMode(false)} analise={analise} wsState={wsState}/>
 
