@@ -1,6 +1,5 @@
 package com.visaoassistiva.backend.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visaoassistiva.backend.dto.response.AnaliseResponseDTO;
 import com.visaoassistiva.backend.dto.response.ObjetoDetectadoDTO;
 import com.visaoassistiva.backend.exception.AnaliseNotFoundException;
@@ -31,9 +30,6 @@ class AnaliseControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @MockBean
     private AnaliseService analiseService;

@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -69,7 +70,7 @@ public class AnaliseService {
                 .map(mapper::toDTO);
     }
 
-    public AnaliseResponseDTO buscarPorId(Long id) {
+    public AnaliseResponseDTO buscarPorId(@NonNull Long id) {
         Analise analise = analiseRepository.findById(id)
                 .orElseThrow(() -> new AnaliseNotFoundException(id));
         return mapper.toDTO(analise);

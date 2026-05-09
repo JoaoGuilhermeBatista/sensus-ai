@@ -16,6 +16,7 @@ import reactor.util.retry.Retry;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -41,7 +42,7 @@ public class IAIntegrationService {
 
         return webClient.post()
                 .uri("/infer")
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(Objects.requireNonNull(MediaType.APPLICATION_JSON))
                 .bodyValue(request)
                 .retrieve()
                 .onStatus(status -> status.isError(),
