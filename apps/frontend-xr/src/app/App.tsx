@@ -140,9 +140,19 @@ function drawBboxes(
 
   objetos.forEach(obj => {
     const { x, y, w, h } = getBbox(obj)
-    if (x == null) return
-    const rx = offsetX + x * activeW, ry = offsetY + y * activeH
-    const rw = w * activeW, rh = h * activeH
+    if (x == null || w == null || h == null) return
+    
+    // Calcula o centro do objeto
+    const centerX = offsetX + (x + w / 2) * activeW
+    const centerY = offsetY + (y + h / 2) * activeH
+    
+    // Tamanho padronizado da hitbox: 160x160 px
+    const fixedSize = 160
+    const rx = centerX - fixedSize / 2
+    const ry = centerY - fixedSize / 2
+    const rw = fixedSize
+    const rh = fixedSize
+    
     const color = colorOf(obj.nome)
     const t = 10
     ctx.strokeStyle = color; ctx.lineWidth = 1.5
@@ -684,7 +694,7 @@ export function App() {
   const [sessions, setSessions] = useLocalState<any[]>('sensus.sessions', [])
   const [snapshots, setSnapshots] = useLocalState<any[]>('sensus.snapshots', [])
   const [settings, setSettings] = useLocalState('sensus.settings', {
-    showLabels: true, showDistance: true, ttsEnabled: false,
+    showLabels: true, showDistance: true, ttsEnabled: true,
   })
 
   const { announce } = useAudioAnnouncer()
@@ -725,7 +735,15 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', overflow: 'hidden' }}>
-      <Sidebar view={view} setView={setView} onXR={() => setXrMode(true)} sessions={sessions} wsState={wsState}/>
+      <Sidebar view={view} setView={setView} onXR={() => {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          // Desbloqueia o Autoplay Policy do navegador enviando um áudio mudo
+          const u = new SpeechSynthesisUtterance('');
+          u.volume = 0;
+          window.speechSynthesis.speak(u);
+        }
+        setXrMode(true);
+      }} sessions={sessions} wsState={wsState}/>
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         <TopBar view={view}/>
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>

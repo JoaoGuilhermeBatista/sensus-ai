@@ -6,7 +6,7 @@ WORKDIR /app/apps/frontend-xr
 COPY packages/shared-contracts /app/packages/shared-contracts/
 
 COPY apps/frontend-xr/package*.json ./
-RUN npm ci
+RUN npm install
 
 COPY apps/frontend-xr/ ./
 
