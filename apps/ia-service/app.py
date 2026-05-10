@@ -34,7 +34,7 @@ from models import (
 
 CONFIDENCE_THRESHOLD = float(
     os.environ.get("CONFIDENCE_THRESHOLD")
-    or os.environ.get("IA_INFERENCE_CONF", "0.28")
+    or os.environ.get("IA_INFERENCE_CONF", "0.22")
 )
 MODEL_PATH = (
     os.environ.get("MODEL_PATH", "").strip()
@@ -109,11 +109,13 @@ _CLASS_REAL_HEIGHT_CM = {
 }
 
 _CLASS_MIN_CONF = {
-    "person": 0.30, "pessoa": 0.30,
-    "chair": 0.28, "cadeira": 0.28,
-    "backpack": 0.28, "laptop": 0.30,
-    "bench": 0.28, "table": 0.28, "mesa": 0.28,
-    "cell phone": 0.35,
+    "person": 0.28, "pessoa": 0.28,
+    "chair": 0.22, "cadeira": 0.22,
+    "backpack": 0.22, "laptop": 0.25,
+    "bench": 0.22, "table": 0.22, "mesa": 0.22,
+    "cell phone": 0.28,
+    "bottle": 0.22, "cup": 0.22, "book": 0.22,
+    "tv": 0.22, "potted plant": 0.22,
 }
 
 _CLASS_PRIORITY = {
