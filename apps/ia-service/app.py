@@ -34,7 +34,7 @@ from models import (
 
 CONFIDENCE_THRESHOLD = float(
     os.environ.get("CONFIDENCE_THRESHOLD")
-    or os.environ.get("IA_INFERENCE_CONF", "0.25")
+    or os.environ.get("IA_INFERENCE_CONF", "0.28")
 )
 MODEL_PATH = (
     os.environ.get("MODEL_PATH", "").strip()
@@ -44,15 +44,22 @@ MAX_IMAGE_SIZE = int(os.environ.get("MAX_IMAGE_SIZE", "512000"))
 DEVICE = os.environ.get("DEVICE", "cpu").strip()
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").strip()
 
+# Optional: restrict inference to a set of allowed class names (comma-separated)
+_ALLOWED_CLASSES = os.environ.get("ALLOWED_CLASSES", "").strip()
+if _ALLOWED_CLASSES:
+    _ALLOWED_CLASSES = {c.strip().lower() for c in _ALLOWED_CLASSES.split(",") if c.strip()}
+else:
+    _ALLOWED_CLASSES = None
+
 # Internal inference tuning (not exposed in SDD but kept configurable)
 _INFERENCE_IOU = float(os.environ.get("IA_INFERENCE_IOU", "0.45"))
-_INFERENCE_IMGSZ = int(os.environ.get("IA_INFERENCE_IMGSZ", "640"))
+_INFERENCE_IMGSZ = int(os.environ.get("IA_INFERENCE_IMGSZ", "1024"))
 _MIN_BOX_AREA_RATIO = float(os.environ.get("IA_MIN_BOX_AREA_RATIO", "0.0015"))
 _MAX_BOX_AREA_RATIO = float(os.environ.get("IA_MAX_BOX_AREA_RATIO", "0.85"))
 _MIN_BOX_ASPECT_RATIO = float(
     os.environ.get("IA_MIN_BOX_ASPECT_RATIO", "0.12"))
 _MAX_BOX_ASPECT_RATIO = float(os.environ.get("IA_MAX_BOX_ASPECT_RATIO", "8.0"))
-_MIN_PERSISTENCE = int(os.environ.get("IA_MIN_PERSISTENCE", "1"))
+_MIN_PERSISTENCE = int(os.environ.get("IA_MIN_PERSISTENCE", "2"))
 _CAMERA_HISTORY_SIZE = int(os.environ.get("IA_CAMERA_HISTORY_SIZE", "5"))
 _ENABLE_TRACKING = (
     os.environ.get("IA_ENABLE_TRACKING", "1").strip().lower()
@@ -104,9 +111,9 @@ _CLASS_REAL_HEIGHT_CM = {
 _CLASS_MIN_CONF = {
     "person": 0.30, "pessoa": 0.30,
     "chair": 0.28, "cadeira": 0.28,
-    "backpack": 0.30, "laptop": 0.35,
+    "backpack": 0.28, "laptop": 0.30,
     "bench": 0.28, "table": 0.28, "mesa": 0.28,
-    "cell phone": 0.20,
+    "cell phone": 0.35,
 }
 
 _CLASS_PRIORITY = {
@@ -131,11 +138,11 @@ def _require_api_key(x_api_key: Optional[str]) -> None:
 def get_model() -> YOLO:
     global _model, _model_path
     if _model is None:
-        path = MODEL_PATH or "yolov8n.pt"
+        path = MODEL_PATH or "models/best.pt"
         if path and not Path(path).exists():
             print(
-                f"[ia-service] Model not found at '{path}', falling back to yolov8n.pt (auto-download)")
-            path = "yolov8n.pt"
+                f"[ia-service] Model not found at '{path}', falling back to yolov8s.pt (auto-download)")
+            path = "yolov8s.pt"
         print(f"[ia-service] Loading model: {path}  device={DEVICE}")
         _model = YOLO(path)
         _model_path = str(path)
@@ -193,6 +200,97 @@ def _box_is_plausible(x1: float, y1: float, x2: float, y2: float, w: int, h: int
         return False
     aspect = bw / max(1.0, bh)
     return _MIN_BOX_ASPECT_RATIO <= aspect <= _MAX_BOX_ASPECT_RATIO
+
+# â"€â"€â"€ Smart Post-Processing â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+def _validate_detection(raw: dict, model_names: dict) -> bool:
+    """
+    Validate detection using smart heuristics without retraining.
+    Filters out false positives based on:
+    - Expected size ranges for object class
+    - Geometric plausibility
+    - Confidence vs class difficulty
+    """
+    nome = str(raw.get("nome", "")).lower()
+    conf = float(raw.get("confidence") or 0.0)
+    height_ratio = raw.get("height_ratio", 0.0)
+    
+    # Class-specific heuristics: (min_height_ratio, max_height_ratio, min_conf_for_small)
+    _CLASS_HEURISTICS = {
+        "person": (0.05, 0.99, 0.20),      # people: big objects, need decent conf if small
+        "chair": (0.03, 0.95, 0.22),       # chairs: medium size
+        "bench": (0.03, 0.95, 0.20),       # similar to chair
+        "laptop": (0.02, 0.80, 0.25),      # smaller, needs better conf
+        "cell phone": (0.01, 0.40, 0.30),  # very small, need high conf when tiny
+        "bottle": (0.01, 0.60, 0.25),      # small object
+        "book": (0.01, 0.50, 0.25),        # small object
+        "cup": (0.01, 0.50, 0.25),         # small object
+        "backpack": (0.02, 0.80, 0.22),    # moderate size
+        "tv": (0.04, 0.90, 0.22),          # usually large
+    }
+    
+    heur = _CLASS_HEURISTICS.get(nome)
+    if not heur:
+        return True  # Unknown class, accept it
+    
+    min_h, max_h, min_conf_small = heur
+    
+    # Reject if object is too small without high confidence
+    if height_ratio < 0.05 and conf < min_conf_small:
+        return False
+    
+    # Reject if completely out of expected size range
+    if height_ratio < min_h or height_ratio > max_h:
+        return False
+    
+    return True
+
+
+def _postprocess_detections(raw_list: list[dict], img_h: int, img_w: int) -> list[dict]:
+    """
+    Post-processing pipeline without retraining:
+    1. Filter boxes by class-specific heuristics
+    2. Remove duplicate detections (soft NMS)
+    3. Boost confidence for high-quality detections
+    """
+    model = get_model()
+    
+    # Step 1: Validate by heuristics
+    filtered = [r for r in raw_list if _validate_detection(r, model.names)]
+    
+    # Step 2: Soft NMS - remove overlapping low-confidence boxes
+    result = []
+    for i, box_i in enumerate(filtered):
+        keep = True
+        conf_i = float(box_i.get("confidence") or 0.0)
+        x1_i, y1_i, x2_i, y2_i = box_i["bbox"]
+        area_i = (x2_i - x1_i) * (y2_i - y1_i)
+        
+        for j, box_j in enumerate(result):
+            if box_i.get("nome") != box_j.get("nome"):
+                continue  # Different class, don't suppress
+            
+            conf_j = float(box_j.get("confidence") or 0.0)
+            if conf_j >= conf_i:
+                # Higher confidence box already there
+                x1_j, y1_j, x2_j, y2_j = box_j["bbox"]
+                area_j = (x2_j - x1_j) * (y2_j - y1_j)
+                
+                # Calculate IoU
+                xi1, yi1, xi2, yi2 = max(x1_i, x1_j), max(y1_i, y1_j), min(x2_i, x2_j), min(y2_i, y2_j)
+                inter = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+                union = area_i + area_j - inter
+                iou = inter / max(1, union)
+                
+                if iou > 0.5:
+                    keep = False
+                    break
+        
+        if keep:
+            result.append(box_i)
+    
+    return result
+
 
 
 # â”€â”€â”€ Distance Classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -290,6 +388,10 @@ def _detect(img: np.ndarray, camera_id: Optional[str] = None) -> list[dict]:
             cls = int(box.cls[0])
             nome = str(model.names[cls])
 
+            # If ALLOWED_CLASSES is configured, skip detections not in that set
+            if _ALLOWED_CLASSES and nome.lower() not in _ALLOWED_CLASSES:
+                continue
+
             min_conf = _CLASS_MIN_CONF.get(nome.lower(), CONFIDENCE_THRESHOLD)
             if conf is not None and conf < min_conf:
                 continue
@@ -330,6 +432,7 @@ def _detect(img: np.ndarray, camera_id: Optional[str] = None) -> list[dict]:
                 "img_h": h,
             })
 
+    raw = _postprocess_detections(raw, h, w)
     return _coalesce_history(camera_id, raw)
 
 

@@ -142,16 +142,10 @@ function drawBboxes(
     const { x, y, w, h } = getBbox(obj)
     if (x == null || w == null || h == null) return
     
-    // Calcula o centro do objeto
-    const centerX = offsetX + (x + w / 2) * activeW
-    const centerY = offsetY + (y + h / 2) * activeH
-    
-    // Tamanho padronizado da hitbox: 160x160 px
-    const fixedSize = 160
-    const rx = centerX - fixedSize / 2
-    const ry = centerY - fixedSize / 2
-    const rw = fixedSize
-    const rh = fixedSize
+    const rx = offsetX + x * activeW
+    const ry = offsetY + y * activeH
+    const rw = w * activeW
+    const rh = h * activeH
     
     const color = colorOf(obj.nome)
     const t = 10

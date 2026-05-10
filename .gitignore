@@ -61,7 +61,7 @@ logs/
 # Machine Learning
 # =========================
 datasets/
-models/
+
 runs/
 checkpoints/
 
@@ -69,6 +69,10 @@ checkpoints/
 *.pth
 *.onnx
 *.engine
+
+# Allow base YOLO models (exclude trained best.pt)
+!apps/ia-service/models/yolov8n.pt
+!apps/ia-service/models/yolov8s.pt
 
 # =========================
 # OS
