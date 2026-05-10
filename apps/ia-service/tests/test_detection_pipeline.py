@@ -270,15 +270,15 @@ class TestTargetObjectClasses:
         # cell phone is an obstacle class so it contributes to orientation scoring
         assert "cell phone" in self.app._OBSTACLE_CLASSES
 
-    def test_cell_phone_min_conf_lower_than_default(self):
-        # cell phone uses a lower threshold (0.20) to detect reliably at distance
-        assert self.app._CLASS_MIN_CONF["cell phone"] == 0.20
+    def test_cell_phone_min_conf(self):
+        assert self.app._CLASS_MIN_CONF["cell phone"] == 0.28
 
     def test_person_min_conf(self):
-        assert self.app._CLASS_MIN_CONF["person"] == 0.30
+        assert self.app._CLASS_MIN_CONF["person"] == 0.28
 
     def test_chair_min_conf(self):
-        assert self.app._CLASS_MIN_CONF["chair"] == 0.28
+        # chair uses lower threshold than person to improve non-person detection
+        assert self.app._CLASS_MIN_CONF["chair"] == 0.22
 
     def test_person_priority_highest(self):
         person_priority = self.app._CLASS_PRIORITY["person"]
