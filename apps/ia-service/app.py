@@ -205,7 +205,7 @@ def _box_is_plausible(x1: float, y1: float, x2: float, y2: float, w: int, h: int
 
 # â"€â"€â"€ Smart Post-Processing â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-def _validate_detection(raw: dict, model_names: dict) -> bool:
+def _validate_detection(raw: dict) -> bool:
     """
     Validate detection using smart heuristics without retraining.
     Filters out false positives based on:
@@ -222,7 +222,7 @@ def _validate_detection(raw: dict, model_names: dict) -> bool:
         "person": (0.05, 0.99, 0.20),      # people: big objects, need decent conf if small
         "chair": (0.03, 0.95, 0.22),       # chairs: medium size
         "bench": (0.03, 0.95, 0.20),       # similar to chair
-        "laptop": (0.02, 0.80, 0.25),      # smaller, needs better conf
+        "laptop": (0.02, 0.80, 0.30),      # smaller, needs better conf
         "cell phone": (0.01, 0.40, 0.30),  # very small, need high conf when tiny
         "bottle": (0.01, 0.60, 0.25),      # small object
         "book": (0.01, 0.50, 0.25),        # small object
@@ -231,62 +231,55 @@ def _validate_detection(raw: dict, model_names: dict) -> bool:
         "tv": (0.04, 0.90, 0.22),          # usually large
     }
     
-    heur = _CLASS_HEURISTICS.get(nome)
+     heur = _CLASS_HEURISTICS.get(nome)
     if not heur:
-        return True  # Unknown class, accept it
+        return True
     
     min_h, max_h, min_conf_small = heur
     
-    # Reject if object is too small without high confidence
     if height_ratio < 0.05 and conf < min_conf_small:
         return False
     
-    # Reject if completely out of expected size range
     if height_ratio < min_h or height_ratio > max_h:
         return False
     
     return True
 
 
+
+
 def _postprocess_detections(raw_list: list[dict], img_h: int, img_w: int) -> list[dict]:
     """
     Post-processing pipeline without retraining:
     1. Filter boxes by class-specific heuristics
-    2. Remove duplicate detections (soft NMS)
-    3. Boost confidence for high-quality detections
+    2. Remove same-class overlapping duplicate detections by keeping the
+       higher-confidence box when IoU exceeds the suppression threshold
     """
-    model = get_model()
+    filtered = [r for r in raw_list if _validate_detection(r)]
     
-    # Step 1: Validate by heuristics
-    filtered = [r for r in raw_list if _validate_detection(r, model.names)]
+    filtered.sort(key=lambda x: float(x.get("confidence") or 0.0), reverse=True)
     
-    # Step 2: Soft NMS - remove overlapping low-confidence boxes
     result = []
     for i, box_i in enumerate(filtered):
         keep = True
-        conf_i = float(box_i.get("confidence") or 0.0)
         x1_i, y1_i, x2_i, y2_i = box_i["bbox"]
         area_i = (x2_i - x1_i) * (y2_i - y1_i)
         
         for j, box_j in enumerate(result):
             if box_i.get("nome") != box_j.get("nome"):
-                continue  # Different class, don't suppress
+                continue
             
-            conf_j = float(box_j.get("confidence") or 0.0)
-            if conf_j >= conf_i:
-                # Higher confidence box already there
-                x1_j, y1_j, x2_j, y2_j = box_j["bbox"]
-                area_j = (x2_j - x1_j) * (y2_j - y1_j)
-                
-                # Calculate IoU
-                xi1, yi1, xi2, yi2 = max(x1_i, x1_j), max(y1_i, y1_j), min(x2_i, x2_j), min(y2_i, y2_j)
-                inter = max(0, xi2 - xi1) * max(0, yi2 - yi1)
-                union = area_i + area_j - inter
-                iou = inter / max(1, union)
-                
-                if iou > 0.5:
-                    keep = False
-                    break
+            x1_j, y1_j, x2_j, y2_j = box_j["bbox"]
+            area_j = (x2_j - x1_j) * (y2_j - y1_j)
+            
+            xi1, yi1, xi2, yi2 = max(x1_i, x1_j), max(y1_i, y1_j), min(x2_i, x2_j), min(y2_i, y2_j)
+            inter = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+            union = area_i + area_j - inter
+            iou = inter / max(1, union)
+            
+            if iou > 0.5:
+                keep = False
+                break
         
         if keep:
             result.append(box_i)
