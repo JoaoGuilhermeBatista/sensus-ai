@@ -14,6 +14,8 @@ services:
       - VITE_API_URL=${VITE_API_URL:-http://localhost:8080/api}
       - VITE_ENABLE_XR=${VITE_ENABLE_XR:-true}
     depends_on:
+      ia-service:
+        condition: service_healthy
       backend-api:
         condition: service_healthy
     networks:
@@ -59,7 +61,7 @@ services:
     ports:
       - "${IA_PORT:-8000}:8000"
     environment:
-      - MODEL_PATH=${MODEL_PATH:-/app/models/yolo26n.pt}
+      - MODEL_PATH=${MODEL_PATH:-/app/models/yolov8n.pt}
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.5}
       - MAX_IMAGE_SIZE=${MAX_IMAGE_SIZE:-512000}
       - DEVICE=${DEVICE:-cpu}
@@ -73,7 +75,7 @@ services:
       interval: 30s
       timeout: 10s
       start_period: 30s
-      retries: 3
+      retries: 4
     # Uncomment to enable NVIDIA GPU support (requires nvidia-container-toolkit):
     # deploy:
     #   resources:

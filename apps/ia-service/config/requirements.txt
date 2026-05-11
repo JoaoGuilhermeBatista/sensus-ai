@@ -12,3 +12,4 @@ pyyaml
 pycocotools
 tqdm
 nvidia-ml-py
+ultralytics
