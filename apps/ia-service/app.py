@@ -231,7 +231,7 @@ def _validate_detection(raw: dict) -> bool:
         "tv": (0.04, 0.90, 0.22),          # usually large
     }
     
-     heur = _CLASS_HEURISTICS.get(nome)
+    heur = _CLASS_HEURISTICS.get(nome)
     if not heur:
         return True
     
