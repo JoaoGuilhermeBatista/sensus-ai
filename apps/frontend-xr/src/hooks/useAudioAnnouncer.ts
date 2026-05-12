@@ -10,10 +10,6 @@ const DEBOUNCE_MS: Record<string, number> = {
 
 const MAX_OBJECTS_PER_CYCLE = 2
 
-const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY as string | undefined
-const ELEVENLABS_VOICE_ID = (import.meta.env.VITE_ELEVENLABS_VOICE_ID as string | undefined) ?? 'pNInz6obpgDQGcFmaJgB'
-const ELEVENLABS_MODEL = (import.meta.env.VITE_ELEVENLABS_MODEL as string | undefined) ?? 'eleven_multilingual_v2'
-
 function priorityScore(obj: ObjetoDetectado): number {
   if (obj.isClose) return 3
   if (obj.distancia === 'medio') return 2
@@ -21,30 +17,19 @@ function priorityScore(obj: ObjetoDetectado): number {
 }
 
 async function fetchElevenLabsAudio(text: string, isClose: boolean): Promise<ArrayBuffer> {
-  const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-    {
-      method: 'POST',
-      headers: {
-        'xi-api-key': ELEVENLABS_API_KEY!,
-        'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
-      },
-      body: JSON.stringify({
-        text,
-        model_id: ELEVENLABS_MODEL,
-        voice_settings: {
-          // lower stability = more expressive/energetic for close/urgent objects
-          stability: isClose ? 0.35 : 0.55,
-          similarity_boost: isClose ? 0.85 : 0.75,
-          speed: isClose ? 1.15 : 1.0,
-        },
-      }),
+  const response = await fetch('/api/tts', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
-  )
+    body: JSON.stringify({
+      text,
+      isClose,
+    }),
+  })
 
   if (!response.ok) {
-    throw new Error(`ElevenLabs API error: ${response.status}`)
+    throw new Error(`TTS API error: ${response.status}`)
   }
 
   return response.arrayBuffer()
@@ -104,13 +89,6 @@ export function useAudioAnnouncer() {
     // Mark as announced immediately to prevent duplicate calls while audio loads
     for (const obj of eligible) {
       lastAnnounced.current.set(obj.nome, now)
-    }
-
-    if (!ELEVENLABS_API_KEY) {
-      for (const obj of eligible) {
-        announceFallback(buildDirectionalMessage(obj), obj.isClose)
-      }
-      return
     }
 
     // Chain onto the existing queue so announcements play sequentially

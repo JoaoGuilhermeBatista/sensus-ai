@@ -55,3 +55,8 @@ logging:
     org.springframework.web: INFO
   pattern:
     console: "%d{HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+elevenlabs:
+  api-key: ${ELEVENLABS_API_KEY:}
+  voice-id: ${ELEVENLABS_VOICE_ID:pNInz6obpgDQGcFmaJgB}
+  model: ${ELEVENLABS_MODEL:eleven_multilingual_v2}
