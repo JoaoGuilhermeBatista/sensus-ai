@@ -55,7 +55,7 @@ function colorOf(nome: string) {
 const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 const fmtDate = (ts: number) => new Date(ts).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 
-function useLocalState<T>(key: string, initial: T): [T, (v: T) => void] {
+function useLocalState<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [v, setV] = useState<T>(() => {
     try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : initial } catch { return initial }
   })
@@ -93,12 +93,6 @@ function Mark({ size = 22 }: { size?: number }) {
   )
 }
 
-const primaryBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 8,
-  padding: '10px 16px', borderRadius: 8, border: 'none',
-  background: 'var(--fg)', color: 'var(--bg)',
-  fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-}
 const ghostBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 8,
   padding: '10px 14px', borderRadius: 8,

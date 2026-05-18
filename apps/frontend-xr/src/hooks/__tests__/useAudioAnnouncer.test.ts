@@ -151,7 +151,7 @@ describe('announce — speechSynthesis integration', () => {
 
   // We call the hook logic directly via dynamic import
   it('calls speechSynthesis.speak for eligible objects', async () => {
-    const { useAudioAnnouncer } = await import('../useAudioAnnouncer')
+    await import('../useAudioAnnouncer')
 
     // Simulate hook internals manually — create a closure that mirrors announce()
     // by directly calling the same speechSynthesis.speak path
@@ -185,7 +185,6 @@ describe('announce — speechSynthesis integration', () => {
 
   it('does not speak for empty object list', async () => {
     // Empty list → eligible is empty → speak never called
-    const map = new Map<string, number>()
     const eligible = ([] as Obj[]).slice(0, 2)
     for (const _ of eligible) speechSynthesis.speak(new SpeechSynthesisUtterance(''))
     expect(speakMock).not.toHaveBeenCalled()

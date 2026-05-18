@@ -1,0 +1,6 @@
+{
+  "installCommand": "npm install",
+  "buildCommand": "cd apps/frontend-xr && npm run build",
+  "outputDirectory": "apps/frontend-xr/dist",
+  "framework": null
+}

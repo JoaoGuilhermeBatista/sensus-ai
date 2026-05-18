@@ -1,0 +1,8 @@
+{
+  "name": "sensus",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

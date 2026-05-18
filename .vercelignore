@@ -1,0 +1,11 @@
+node_modules
+apps/backend-api
+apps/ia-service
+apps/frontend-xr/node_modules
+packages/shared-contracts/node_modules
+.git
+*.log
+dist
+.env*
+docker-compose*.yml
+docs
