@@ -20,9 +20,7 @@ RUN apt-get update && \
 
 # Copiar e instalar dependências Python (requirements em config/requirements.txt)
 COPY config/requirements.txt /tmp/requirements.txt
-# Use BuildKit cache for pip to speed up repeated builds. Requires DOCKER_BUILDKIT=1.
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -U pip && pip install -r /tmp/requirements.txt --no-cache-dir
+RUN pip install -U pip && pip install -r /tmp/requirements.txt --no-cache-dir
 
 # Copiar apenas o necessário para executar a API e scripts de treino.
 # Datasets, runs e models não são copiados (use bind-mount em `docker run`).
@@ -45,4 +43,4 @@ COPY models/ /app/models/
 EXPOSE 8000
 
 # Entrada padrão (para API). Use o Makefile/`docker run` para rodar comandos de treino.
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]

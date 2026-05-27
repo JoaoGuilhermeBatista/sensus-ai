@@ -1,15 +1,11 @@
 fastapi
-uvicorn
-opencv-python
+uvicorn[standard]
+opencv-python-headless
 numpy
 ultralytics
 httpx
 requests
 python-multipart
-pyttsx3
 Pillow
 pyyaml
-pycocotools
 tqdm
-nvidia-ml-py
-ultralytics
