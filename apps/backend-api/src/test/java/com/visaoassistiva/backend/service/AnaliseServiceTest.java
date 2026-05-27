@@ -63,12 +63,12 @@ class AnaliseServiceTest {
     void deveProcessarImagemComSucesso() {
         byte[] imagem = new byte[100];
         IAResponseDTO iaResponse = new IAResponseDTO(
-                List.of(new ObjetoDetectadoDTO("person", "perto", true, null, null, null, null)),
+                List.of(new ObjetoDetectadoDTO("person", null, "perto", true, null, null, null, null)),
                 1711370000L
         );
         Analise analise = criarAnalise(List.of(criarObjeto("person", "perto", true)));
         AnaliseResponseDTO responseDTO = new AnaliseResponseDTO(1L, 1711370000L,
-                List.of(new ObjetoDetectadoDTO("person", "perto", true, null, null, null, null)));
+                List.of(new ObjetoDetectadoDTO("person", null, "perto", true, null, null, null, null)));
 
         when(iaIntegrationService.enviarParaIA(imagem)).thenReturn(Mono.just(iaResponse));
         when(mapper.iaResponseToAnalise(iaResponse)).thenReturn(analise);
@@ -88,8 +88,8 @@ class AnaliseServiceTest {
         byte[] imagem = new byte[100];
         IAResponseDTO iaResponse = new IAResponseDTO(
                 List.of(
-                        new ObjetoDetectadoDTO("person", "perto", true, null, null, null, null),
-                        new ObjetoDetectadoDTO("banana", "longe", false, null, null, null, null) // irrelevante
+                        new ObjetoDetectadoDTO("person", null, "perto", true, null, null, null, null),
+                        new ObjetoDetectadoDTO("banana", null, "longe", false, null, null, null, null) // irrelevante
                 ),
                 1711370000L
         );
@@ -99,7 +99,7 @@ class AnaliseServiceTest {
                 criarObjeto("banana", "longe", false)
         ));
         AnaliseResponseDTO responseDTO = new AnaliseResponseDTO(1L, 1711370000L,
-                List.of(new ObjetoDetectadoDTO("person", "perto", true, null, null, null, null)));
+                List.of(new ObjetoDetectadoDTO("person", null, "perto", true, null, null, null, null)));
 
         when(iaIntegrationService.enviarParaIA(imagem)).thenReturn(Mono.just(iaResponse));
         when(mapper.iaResponseToAnalise(iaResponse)).thenReturn(analise);

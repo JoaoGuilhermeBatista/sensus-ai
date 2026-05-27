@@ -23,6 +23,7 @@ public class AnaliseMapper {
     public ObjetoDetectadoDTO objetoToDTO(ObjetoDetectado objeto) {
         return new ObjetoDetectadoDTO(
                 objeto.getNome(),
+                objeto.getConfidence(),
                 objeto.getDistancia(),
                 objeto.getIsClose(),
                 objeto.getBboxX(),
@@ -41,6 +42,7 @@ public class AnaliseMapper {
                     .map(dto -> {
                         ObjetoDetectado obj = new ObjetoDetectado();
                         obj.setNome(dto.nome());
+                        obj.setConfidence(dto.confidence());
                         obj.setDistancia(dto.distancia());
                         obj.setIsClose(Boolean.TRUE.equals(dto.isClose()) || "perto".equalsIgnoreCase(dto.distancia()));
                         obj.setBboxX(dto.bboxX());

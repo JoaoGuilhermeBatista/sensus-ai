@@ -7,6 +7,7 @@ import com.visaoassistiva.backend.dto.response.ObjetoDetectadoDTO;
 import com.visaoassistiva.backend.exception.IAServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -45,7 +46,7 @@ public class IAIntegrationService {
                 .contentType(Objects.requireNonNull(MediaType.APPLICATION_JSON))
                 .bodyValue(request)
                 .retrieve()
-                .onStatus(status -> status.isError(),
+                .onStatus(HttpStatusCode::isError,
                         resp -> Mono.error(new IAServiceException("Serviço de IA retornou erro: " + resp.statusCode())))
                 .bodyToMono(InferResponseDTO.class)
                 .timeout(Duration.ofSeconds(5))
@@ -81,6 +82,7 @@ public class IAIntegrationService {
         List<ObjetoDetectadoDTO> objetos = infer.objects().stream()
                 .map(o -> new ObjetoDetectadoDTO(
                         o.name(),
+                        o.confidence(),
                         o.distance(),
                         o.isClose(),
                         o.x(),

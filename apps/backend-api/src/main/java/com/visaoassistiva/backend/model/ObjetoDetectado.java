@@ -12,6 +12,7 @@ public class ObjetoDetectado {
     private Long id;
     @Column(nullable = false)
     private String nome;
+    private Double confidence;
     private String distancia;
     @Column(name = "is_close")
     private Boolean isClose;

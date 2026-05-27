@@ -1,5 +1,7 @@
 package com.visaoassistiva.backend.dto.infer;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public record InferDetectedObjectDTO(
         String name,
         double confidence,
@@ -8,5 +10,5 @@ public record InferDetectedObjectDTO(
         double width,
         double height,
         String distance,
-        boolean isClose
+        @JsonProperty("isClose") boolean isClose
 ) {}

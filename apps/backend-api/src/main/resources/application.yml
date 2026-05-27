@@ -22,7 +22,7 @@ spring:
 
 app:
   ia:
-    base-url: http://ia-service:8000
+    base-url: ${IA_SERVICE_URL:http://ia-service:8000}
     timeout-connect-ms: 2000
     timeout-read-ms: 5000
   rate-limit:

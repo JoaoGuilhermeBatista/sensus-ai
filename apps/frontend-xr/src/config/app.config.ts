@@ -1,5 +1,5 @@
 export const config = {
-  WS_URL: 'ws://localhost:8080/ws',
+  WS_URL: import.meta.env.VITE_BACKEND_WS_URL || '/ws/realtime',
   FPS: 3,
   WIDTH: 320,
   HEIGHT: 240,

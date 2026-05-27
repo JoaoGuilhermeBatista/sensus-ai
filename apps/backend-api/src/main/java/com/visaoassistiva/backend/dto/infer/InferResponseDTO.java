@@ -1,10 +1,11 @@
 package com.visaoassistiva.backend.dto.infer;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 public record InferResponseDTO(
-        String frameId,
+        @JsonProperty("frameId") String frameId,
         long timestamp,
-        double inferenceMs,
+        @JsonProperty("inferenceMs") double inferenceMs,
         List<InferDetectedObjectDTO> objects
 ) {}

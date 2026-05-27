@@ -1,0 +1,2 @@
+ALTER TABLE objeto_detectado
+  ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION;

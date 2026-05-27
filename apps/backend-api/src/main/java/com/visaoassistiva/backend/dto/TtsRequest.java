@@ -1,7 +1,10 @@
 package com.visaoassistiva.backend.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class TtsRequest {
     private String text;
+    @JsonProperty("isClose")
     private boolean isClose;
 
     public String getText() {

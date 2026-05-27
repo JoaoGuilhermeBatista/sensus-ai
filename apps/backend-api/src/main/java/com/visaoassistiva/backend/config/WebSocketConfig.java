@@ -17,7 +17,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     }
     @Override
     public void registerWebSocketHandlers(@NonNull WebSocketHandlerRegistry registry) {
-        registry.addHandler(imagemWebSocketHandler, "/ws")
+        registry.addHandler(imagemWebSocketHandler, "/ws/realtime")
                 .setAllowedOrigins("*");
     }
     @Bean

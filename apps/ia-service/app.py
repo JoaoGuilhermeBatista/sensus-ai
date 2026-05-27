@@ -358,7 +358,7 @@ def _coalesce_history(camera_id: Optional[str], detections: list[dict]) -> list[
     for key, d in latest.items():
         if counts[key] >= _MIN_PERSISTENCE:
             avg = conf_sum[key] / float(counts[key])
-            result.append({**d, "confidence": round(avg, 4)} if avg else d)
+            result.append({**d, "confidence": round(avg, 4)})
     return result
 
 
