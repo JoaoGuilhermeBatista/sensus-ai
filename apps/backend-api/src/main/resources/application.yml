@@ -1,11 +1,11 @@
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 spring:
   datasource:
-    url: jdbc:postgresql://postgres:5432/visaoassistiva
-    username: ${DB_USER:postgres}
-    password: ${DB_PASS:postgres}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${DB_USER}
+    password: ${DB_PASS}
   jpa:
     hibernate:
       ddl-auto: validate
