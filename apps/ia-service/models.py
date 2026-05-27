@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,7 @@ class InferRequest(BaseModel):
     frameId: str
     timestamp: int
     image: str  # base64-encoded JPEG
+    cameraId: Optional[str] = None  # stable per-session id for temporal coalescing
 
 
 # ─── Shared Detection ─────────────────────────────────────────────────────────

@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd apps/frontend-xr && npm run build",
+  "outputDirectory": "apps/frontend-xr/dist",
+  "installCommand": "npm install --prefix packages/shared-contracts && npm install --prefix apps/frontend-xr --legacy-peer-deps",
+  "framework": "vite",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

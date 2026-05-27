@@ -34,7 +34,7 @@ from models import (
 
 CONFIDENCE_THRESHOLD = float(
     os.environ.get("CONFIDENCE_THRESHOLD")
-    or os.environ.get("IA_INFERENCE_CONF", "0.25")
+    or os.environ.get("IA_INFERENCE_CONF", "0.45")
 )
 MODEL_PATH = (
     os.environ.get("MODEL_PATH", "").strip()
@@ -45,14 +45,14 @@ DEVICE = os.environ.get("DEVICE", "cpu").strip()
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").strip()
 
 # Internal inference tuning (not exposed in SDD but kept configurable)
-_INFERENCE_IOU = float(os.environ.get("IA_INFERENCE_IOU", "0.45"))
-_INFERENCE_IMGSZ = int(os.environ.get("IA_INFERENCE_IMGSZ", "640"))
-_MIN_BOX_AREA_RATIO = float(os.environ.get("IA_MIN_BOX_AREA_RATIO", "0.0015"))
-_MAX_BOX_AREA_RATIO = float(os.environ.get("IA_MAX_BOX_AREA_RATIO", "0.85"))
+_INFERENCE_IOU = float(os.environ.get("IA_INFERENCE_IOU", "0.40"))
+_INFERENCE_IMGSZ = int(os.environ.get("IA_INFERENCE_IMGSZ", "832"))
+_MIN_BOX_AREA_RATIO = float(os.environ.get("IA_MIN_BOX_AREA_RATIO", "0.002"))
+_MAX_BOX_AREA_RATIO = float(os.environ.get("IA_MAX_BOX_AREA_RATIO", "0.95"))
 _MIN_BOX_ASPECT_RATIO = float(
-    os.environ.get("IA_MIN_BOX_ASPECT_RATIO", "0.12"))
-_MAX_BOX_ASPECT_RATIO = float(os.environ.get("IA_MAX_BOX_ASPECT_RATIO", "8.0"))
-_MIN_PERSISTENCE = int(os.environ.get("IA_MIN_PERSISTENCE", "1"))
+    os.environ.get("IA_MIN_BOX_ASPECT_RATIO", "0.15"))
+_MAX_BOX_ASPECT_RATIO = float(os.environ.get("IA_MAX_BOX_ASPECT_RATIO", "6.0"))
+_MIN_PERSISTENCE = int(os.environ.get("IA_MIN_PERSISTENCE", "3"))
 _CAMERA_HISTORY_SIZE = int(os.environ.get("IA_CAMERA_HISTORY_SIZE", "5"))
 _ENABLE_TRACKING = (
     os.environ.get("IA_ENABLE_TRACKING", "1").strip().lower()
@@ -62,11 +62,11 @@ _ENABLE_TRACKING = (
 # Distance classification thresholds (bbox height / image height)
 _DISTANCE_CLOSE_THRESHOLD = float(os.environ.get("IA_DISTANCE_CLOSE", "0.35"))
 _DISTANCE_MEDIUM_THRESHOLD = float(
-    os.environ.get("IA_DISTANCE_MEDIUM", "0.12"))
+    os.environ.get("IA_DISTANCE_MEDIUM", "0.52"))
 
 # â”€â”€â”€ App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-app = FastAPI(title="Sensus IA Service", version="1.0.0")
+app = FastAPI(title="Sensus IA Service", version="1.1.0")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
@@ -98,20 +98,56 @@ _CLASS_REAL_HEIGHT_CM = {
     "person": 170.0, "pessoa": 170.0,
     "chair": 90.0, "cadeira": 90.0,
     "table": 75.0, "mesa": 75.0,
-    "bottle": 25.0,
+    "bottle": 45.0, "copo": 45.0
 }
 
 _CLASS_MIN_CONF = {
-    "person": 0.30, "pessoa": 0.30,
-    "chair": 0.28, "cadeira": 0.28,
-    "backpack": 0.30, "laptop": 0.35,
-    "bench": 0.28, "table": 0.28, "mesa": 0.28,
-    "cell phone": 0.20,
+    "person": 0.50,
+    "chair": 0.50, "couch": 0.50, "bed": 0.50,
+    "dining table": 0.48,
+    "bench": 0.55, "potted plant": 0.55,
+    "tv": 0.50, "laptop": 0.50, "cell phone": 0.40,
+    "microwave": 0.55, "oven": 0.55, "refrigerator": 0.55,
+    "bottle": 0.35, "cup": 0.40, "bowl": 0.45,
+    "book": 0.55, "clock": 0.55, "sink": 0.55,
+    "backpack": 0.50, "handbag": 0.55, "suitcase": 0.55,
+    "umbrella": 0.55, "toilet": 0.55,
+    "cat": 0.55, "dog": 0.55,
+    "bicycle": 0.50, "car": 0.50, "motorcycle": 0.50,
+    "bus": 0.50, "truck": 0.50,
+    "traffic light": 0.55, "stop sign": 0.55,
 }
+
+_COCO_PT_BR = {
+    "person": "pessoa",
+    "bicycle": "bicicleta", "car": "carro", "motorcycle": "moto",
+    "bus": "ônibus", "truck": "caminhão",
+    "traffic light": "semáforo", "stop sign": "placa de pare",
+    "bench": "banco", "cat": "gato", "dog": "cachorro",
+    "backpack": "mochila", "umbrella": "guarda-chuva",
+    "handbag": "bolsa", "suitcase": "mala",
+    "bottle": "garrafa", "cup": "copo", "bowl": "tigela",
+    "chair": "cadeira", "couch": "sofá", "bed": "cama",
+    "dining table": "mesa", "toilet": "vaso sanitário",
+    "tv": "televisão", "laptop": "notebook",
+    "cell phone": "celular", "microwave": "micro-ondas",
+    "oven": "forno", "sink": "pia", "refrigerator": "geladeira",
+    "book": "livro", "clock": "relógio",
+    "potted plant": "vaso de planta",
+}
+
+_RELEVANT_CLASSES = set(_COCO_PT_BR.keys())
+
+
+def _pt_name(name: str) -> str:
+    return _COCO_PT_BR.get(name.lower(), name)
+
 
 _CLASS_PRIORITY = {
     "person": 3.0, "pessoa": 3.0,
+    "cup": 2.0 , "copo": 2.0,
     "chair": 1.5, "cadeira": 1.5,
+    
     "table": 1.5, "mesa": 1.5,
     "laptop": 1.2, "backpack": 1.0, "bench": 1.2,
 }
@@ -131,11 +167,14 @@ def _require_api_key(x_api_key: Optional[str]) -> None:
 def get_model() -> YOLO:
     global _model, _model_path
     if _model is None:
-        path = MODEL_PATH or "yolov8n.pt"
-        if path and not Path(path).exists():
+        # Default to a real, accurate model. The "l" (large) weights name objects
+        # noticeably better than nano/small. Override with MODEL_PATH for a
+        # fine-tuned checkpoint. yolo11l.pt is a drop-in upgrade if available.
+        path = MODEL_PATH or "yolov8l.pt"
+        if path and not Path(path).exists() and not path.startswith("yolo"):
             print(
-                f"[ia-service] Model not found at '{path}', falling back to yolov8n.pt (auto-download)")
-            path = "yolov8n.pt"
+                f"[ia-service] Model not found at '{path}', falling back to yolov8l.pt (auto-download)")
+            path = "yolov8l.pt"
         print(f"[ia-service] Loading model: {path}  device={DEVICE}")
         _model = YOLO(path)
         _model_path = str(path)
@@ -290,6 +329,9 @@ def _detect(img: np.ndarray, camera_id: Optional[str] = None) -> list[dict]:
             cls = int(box.cls[0])
             nome = str(model.names[cls])
 
+            if nome.lower() not in _RELEVANT_CLASSES:
+                continue
+
             min_conf = _CLASS_MIN_CONF.get(nome.lower(), CONFIDENCE_THRESHOLD)
             if conf is not None and conf < min_conf:
                 continue
@@ -341,7 +383,7 @@ def _to_detected_object(raw: dict) -> DetectedObject:
     iw, ih = float(raw["img_w"]), float(raw["img_h"])
     distance = _classify_distance(raw["height_ratio"])
     return DetectedObject(
-        name=raw["nome"],
+        name=_pt_name(raw["nome"]),
         confidence=round(float(raw["confidence"] or 0.0), 4),
         x=max(0.0, min(1.0, x1 / iw)),
         y=max(0.0, min(1.0, y1 / ih)),
@@ -356,7 +398,7 @@ def _to_legacy_object(raw: dict) -> dict:
     """Shape expected by the backend's IAResponseDTO (backward-compat)."""
     distance = _classify_distance(raw["height_ratio"])
     return {
-        "nome": raw["nome"],
+        "nome": _pt_name(raw["nome"]),
         "distancia": distance,
         "isClose": distance == "perto",
         "lado": raw.get("lado"),
@@ -466,7 +508,7 @@ async def infer(request: InferRequest):
 
     t0 = time.time()
     try:
-        raw = _detect(img)
+        raw = _detect(img, camera_id=request.cameraId)
     except FileNotFoundError as exc:
         raise _error("INFERENCE_ERROR", str(exc), 503)
     except Exception:

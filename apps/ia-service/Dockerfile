@@ -33,12 +33,8 @@ COPY config/ /app/config/
 COPY scripts/ /app/scripts/
 COPY static/ /app/static/
 
-# Copy model weights into the image for local development.
-# For production, mount models as an external volume instead.
+# models/ e *.pt estão no .gitignore — o app baixa yolov8n.pt automaticamente se MODEL_PATH não existir
 RUN mkdir -p /app/models /app/runs /app/datasets
-# Model weights are excluded from git (.gitignore). Copy what's available locally.
-# If no custom weights are present, yolov8n.pt is auto-downloaded at first startup.
-COPY models/ /app/models/
 
 
 # Expor porta da API

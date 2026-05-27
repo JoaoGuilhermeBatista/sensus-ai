@@ -1,0 +1,34 @@
+services:
+  # ─── Backend API ───────────────────────────────────────────────────────────
+  # IA Service roda no HuggingFace Spaces (apps/ia-service/)
+  - type: web
+    name: sensus-backend
+    runtime: docker
+    dockerfilePath: apps/backend-api/Dockerfile
+    dockerContext: apps/backend-api
+    plan: standard
+    envVars:
+      # DATABASE_URL é convertido para JDBC pelo docker-entrypoint.sh
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sensus-postgres
+          property: connectionString
+      - key: DB_USER
+        fromDatabase:
+          name: sensus-postgres
+          property: user
+      - key: DB_PASS
+        fromDatabase:
+          name: sensus-postgres
+          property: password
+      # Preencha no painel do Render após fazer deploy no HuggingFace
+      # Formato: https://SEU_USERNAME-sensus-ia.hf.space
+      - key: APP_IA_BASE_URL
+        sync: false
+    healthCheckPath: /actuator/health
+
+databases:
+  # PostgreSQL gerenciado pelo Render — plano free disponível
+  - name: sensus-postgres
+    databaseName: visaoassistiva
+    plan: free

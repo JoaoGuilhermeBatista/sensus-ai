@@ -1,3 +1,13 @@
+---
+title: Sensus IA Service
+emoji: 👁
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 ## COCO original
 
 Se você quiser puxar a base oficial do COCO direto da origem, use estes links:

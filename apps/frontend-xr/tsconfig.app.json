@@ -16,7 +16,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "paths": {
+      "@sensus/shared-contracts": ["../../packages/shared-contracts/index.ts"],
+      "@sensus/shared-contracts/*": ["../../packages/shared-contracts/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../../packages/shared-contracts"],
+  "exclude": ["src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.test.tsx"]
 }

@@ -45,9 +45,13 @@ public class AnaliseService {
     }
 
     public AnaliseResponseDTO processarImagem(byte[] imagem) {
+        return processarImagem(imagem, null);
+    }
+
+    public AnaliseResponseDTO processarImagem(byte[] imagem, String cameraId) {
         validarImagem(imagem);
 
-        IAResponseDTO iaResponse = iaIntegrationService.enviarParaIA(imagem).block();
+        IAResponseDTO iaResponse = iaIntegrationService.enviarParaIA(imagem, cameraId).block();
 
         Analise analise = mapper.iaResponseToAnalise(iaResponse);
 

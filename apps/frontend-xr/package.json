@@ -12,18 +12,23 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@sensus/shared-contracts": "file:../../packages/shared-contracts",
+    "@react-three/fiber": "^8.18.0",
+    "@react-three/xr": "^5.7.1",
+    "@types/three": "^0.184.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "three": "^0.165.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
+    "@types/webxr": "^0.5.24",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^4.1.5",
     "happy-dom": "^20.9.0",
     "typescript": "^5.5.3",
-    "vite": "^5.4.10",
-    "vitest": "^4.1.5"
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7"
   }
 }

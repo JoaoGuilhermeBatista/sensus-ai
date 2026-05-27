@@ -5,6 +5,9 @@ import { ConnectionGuard } from '../components/ConnectionGuard'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useFrameSender } from '../hooks/useFrameSender'
 import { useAudioAnnouncer } from '../hooks/useAudioAnnouncer'
+import { XRScene } from '../components/XRScene'
+import { startSession } from '@react-three/xr'
+import { isMetaQuest } from '../hooks/useXRSession'
 import { webSocketService } from '../services/websocket.service'
 import type { AnaliseResponse } from '../types/AnaliseResponse'
 import type { ObjetoDetectado } from '../types/ObjetoDetectado'
@@ -32,30 +35,33 @@ const ptLabel: Record<string, string> = {
 }
 const ptOf = (l: string) => ptLabel[l.toLowerCase()] || l
 
-const BUCKET: Record<string, string> = {
-  person: 'person', pessoa: 'person',
-  car: 'vehicle', carro: 'vehicle', truck: 'vehicle', bus: 'vehicle', motorcycle: 'vehicle',
-  bicycle: 'vehicle', boat: 'vehicle',
-  chair: 'furniture', cadeira: 'furniture', couch: 'furniture', sofa: 'furniture',
-  bed: 'furniture', mesa: 'furniture',
-  tv: 'electronic', laptop: 'electronic', notebook: 'electronic',
-  mouse: 'electronic', keyboard: 'electronic', remote: 'electronic',
-  'cell phone': 'electronic', celular: 'electronic', controle: 'electronic',
-  banana: 'food', apple: 'food', pizza: 'food', orange: 'food',
-}
-const CAT_COLOR: Record<string, string> = {
-  person: 'var(--info)', vehicle: 'var(--danger)',
-  furniture: 'var(--accent)', electronic: 'var(--info)',
-  food: 'var(--ok)', default: 'var(--accent)',
+// Cor única por classe — cores fixas para as mais comuns, hash determinístico para o resto.
+const CLASS_COLOR: Record<string, string> = {
+  pessoa: '#3b82f6', garrafa: '#f59e0b', copo: '#eab308', tigela: '#f97316',
+  cadeira: '#22c55e', sofá: '#16a34a', cama: '#15803d', mesa: '#84cc16',
+  banco: '#65a30d', 'vaso de planta': '#10b981',
+  televisão: '#a855f7', notebook: '#8b5cf6', celular: '#d946ef',
+  'micro-ondas': '#7c3aed', forno: '#6d28d9', geladeira: '#9333ea',
+  livro: '#ec4899', relógio: '#f43f5e', pia: '#06b6d4',
+  mochila: '#ef4444', bolsa: '#dc2626', mala: '#b91c1c', 'guarda-chuva': '#0ea5e9',
+  carro: '#e11d48', moto: '#be123c', bicicleta: '#fb7185',
+  ônibus: '#9f1239', caminhão: '#881337',
+  gato: '#fbbf24', cachorro: '#fb923c',
+  semáforo: '#facc15', 'placa de pare': '#ef4444', 'vaso sanitário': '#0891b2',
 }
 function colorOf(nome: string) {
-  return CAT_COLOR[BUCKET[nome.toLowerCase()] ?? 'default'] ?? CAT_COLOR.default
+  const key = nome.toLowerCase()
+  if (CLASS_COLOR[key]) return CLASS_COLOR[key]
+  // hash estável -> hue, para classes sem cor fixa
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360
+  return `hsl(${h}, 70%, 55%)`
 }
 
 const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 const fmtDate = (ts: number) => new Date(ts).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 
-function useLocalState<T>(key: string, initial: T): [T, (v: T) => void] {
+function useLocalState<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [v, setV] = useState<T>(() => {
     try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : initial } catch { return initial }
   })
@@ -93,12 +99,6 @@ function Mark({ size = 22 }: { size?: number }) {
   )
 }
 
-const primaryBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 8,
-  padding: '10px 16px', borderRadius: 8, border: 'none',
-  background: 'var(--fg)', color: 'var(--bg)',
-  fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-}
 const ghostBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 8,
   padding: '10px 14px', borderRadius: 8,
@@ -113,6 +113,60 @@ function getBbox(obj: ObjetoDetectado) {
     w: obj.bboxWidth ?? (obj as any).bbox_width,
     h: obj.bboxHeight ?? (obj as any).bbox_height,
   }
+}
+
+// Hitbox suavizada: carrega contador de "frames sem confirmação" para não piscar.
+type SmoothBox = ObjetoDetectado & { _miss?: number }
+
+// Casa cada hitbox com o alvo mais próximo da mesma classe e interpola posição/
+// tamanho. Caixas sem alvo no frame atual persistem por alguns frames (anti-flicker)
+// e só são descartadas após MAX_MISS frames consecutivos sem confirmação.
+function matchAndLerp(
+  current: SmoothBox[],
+  target: ObjetoDetectado[],
+  t: number,
+): SmoothBox[] {
+  const MAX_MISS = 12 // ~0.2s a 60fps antes de sumir
+  const used = new Set<number>()
+  const result: SmoothBox[] = []
+  const lerp = (a: number, b: number) => a + (b - a) * t
+
+  // 1) para cada alvo da IA, casa com a caixa atual mais próxima
+  for (const tgt of target) {
+    const tb = getBbox(tgt)
+    if (tb.x == null) continue
+    let best = -1, bestDist = Infinity
+    current.forEach((cur, i) => {
+      if (used.has(i) || cur.nome !== tgt.nome) return
+      const cb = getBbox(cur)
+      if (cb.x == null) return
+      const d = Math.hypot(cb.x! - tb.x!, cb.y! - tb.y!)
+      if (d < bestDist) { bestDist = d; best = i }
+    })
+
+    if (best >= 0 && bestDist < 0.3) {
+      used.add(best)
+      const cb = getBbox(current[best])
+      result.push({
+        ...tgt, _miss: 0,
+        bboxX: lerp(cb.x!, tb.x!),
+        bboxY: lerp(cb.y!, tb.y!),
+        bboxWidth: lerp(cb.w!, tb.w!),
+        bboxHeight: lerp(cb.h!, tb.h!),
+      })
+    } else {
+      result.push({ ...tgt, _miss: 0 }) // objeto novo
+    }
+  }
+
+  // 2) caixas atuais sem alvo neste frame: mantém por mais alguns frames
+  current.forEach((cur, i) => {
+    if (used.has(i)) return
+    const miss = (cur._miss ?? 0) + 1
+    if (miss <= MAX_MISS) result.push({ ...cur, _miss: miss })
+  })
+
+  return result
 }
 
 function drawBboxes(
@@ -140,21 +194,16 @@ function drawBboxes(
 
   objetos.forEach(obj => {
     const { x, y, w, h } = getBbox(obj)
-    if (x == null || w == null || h == null) return
-    
-    // Calcula o centro do objeto
-    const centerX = offsetX + (x + w / 2) * activeW
-    const centerY = offsetY + (y + h / 2) * activeH
-    
-    // Tamanho padronizado da hitbox: 160x160 px
-    const fixedSize = 160
-    const rx = centerX - fixedSize / 2
-    const ry = centerY - fixedSize / 2
-    const rw = fixedSize
-    const rh = fixedSize
-    
+    if (x == null || y == null || w == null || h == null) return
+
+    // Hitbox acompanha o tamanho real do bbox detectado (coords normalizadas 0-1)
+    const rx = offsetX + x * activeW
+    const ry = offsetY + y * activeH
+    const rw = w * activeW
+    const rh = h * activeH
+
     const color = colorOf(obj.nome)
-    const t = 10
+    const t = Math.min(10, rw / 3, rh / 3)
     ctx.strokeStyle = color; ctx.lineWidth = 1.5
     ctx.strokeRect(rx, ry, rw, rh)
     ctx.lineWidth = 2.5
@@ -401,16 +450,40 @@ function Inspector({ analise, history, wsState }: { analise: AnaliseResponse | n
   )
 }
 function LiveView({ analise, history, addSnapshot, settings, wsState }: any) {
-  const { wsState: ws } = useWebSocket()
   const [video, setVideo] = useState<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  useFrameSender(video, ws === 'OPEN')
+  useFrameSender(video, wsState === 'OPEN')
 
+  // Alvo atual vindo da IA + bboxes suavizados que são animados a cada frame.
+  const targetRef = useRef<ObjetoDetectado[]>([])
+  const lastSeenRef = useRef<number>(Date.now())
   useEffect(() => {
-    if (!canvasRef.current || !analise) return
-    drawBboxes(canvasRef.current, analise.objetos, settings.showLabels, video)
-  }, [analise, settings.showLabels, video])
+    if (!analise) return
+    targetRef.current = analise.objetos
+    lastSeenRef.current = Date.now()
+  }, [analise])
+
+  // Loop de animação: interpola as hitboxes em direção ao alvo (movimento fluido
+  // mesmo com a IA respondendo só algumas vezes por segundo).
+  useEffect(() => {
+    let raf = 0
+    let smooth: SmoothBox[] = []
+    const SMOOTHING = 0.30 // 0=parado, 1=instantâneo
+    const STALE_MS = 800   // sem nenhuma detecção há mais que isso → limpa tudo
+
+    const tick = () => {
+      const canvas = canvasRef.current
+      if (canvas) {
+        const target = Date.now() - lastSeenRef.current > STALE_MS ? [] : targetRef.current
+        smooth = matchAndLerp(smooth, target, SMOOTHING)
+        drawBboxes(canvas, smooth, settings.showLabels, video)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [settings.showLabels, video])
 
   const takeSnapshot = useCallback(() => {
     if (!video) return
@@ -628,27 +701,75 @@ function SettingsView({ settings, setSettings }: any) {
 }
 
 function XRView({ onExit, analise, wsState }: any) {
-  const { wsState: ws } = useWebSocket()
   const [video, setVideo] = useState<HTMLVideoElement | null>(null)
+  const [arActive, setArActive] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  useFrameSender(video, ws === 'OPEN')
+  useFrameSender(video, wsState === 'OPEN')
+
   useEffect(() => {
     if (!canvasRef.current || !analise) return
-    drawBboxes(canvasRef.current, analise.objetos, true, video)
-  }, [analise, video])
+    drawBboxes(canvasRef.current, analise.objetos, true, null)
+  }, [analise])
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onExit() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onExit])
+
+  const handleEnterAR = useCallback(() => {
+    // dom-overlay deixa a UI 2D (canvas das hitboxes) visível por cima do passthrough.
+    startSession('immersive-ar', {
+      requiredFeatures: ['local-floor'],
+      optionalFeatures: [
+        'hand-tracking', 'bounded-floor', 'layers',
+        'dom-overlay',
+      ],
+      domOverlay: { root: document.body },
+    } as XRSessionInit)
+      .then((session) => {
+        if (!session) return
+        setArActive(true)
+        session.addEventListener('end', () => setArActive(false))
+      })
+      .catch((err) => {
+        console.error('[XR] falha ao iniciar AR:', err)
+      })
+  }, [])
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 1000 }}>
-      <ConnectionGuard wsState={wsState}>
-        <CameraView onVideoReady={setVideo}/>
-        <canvas ref={canvasRef} style={{
-          position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10,
-        }}/>
-      </ConnectionGuard>
+    <div style={{ position: 'fixed', inset: 0, background: arActive ? 'transparent' : '#000', zIndex: 1000 }}>
+
+      {/* Canvas XR montado SEMPRE — precisa existir antes da sessão iniciar para
+          capturá-la e conectar o passthrough ao renderer (senão fica preto). */}
+      <XRScene />
+      <CameraView onVideoReady={setVideo} hidden />
+      <canvas ref={canvasRef} style={{
+        position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10,
+      }}/>
+
+      {/* Botão de entrada — WebXR exige gesto do usuário */}
+      {!arActive && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 30,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 24,
+        }}>
+          <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16, letterSpacing: '0.1em' }}>SENSUS AI</span>
+          <button onClick={handleEnterAR} style={{
+            padding: '28px 56px', borderRadius: 100,
+            background: '#00ffcc', color: '#000',
+            fontSize: 22, fontWeight: 700, fontFamily: 'inherit',
+            border: 'none', cursor: 'pointer',
+            boxShadow: '0 0 50px rgba(0,255,200,0.5)',
+            touchAction: 'manipulation',
+          }}>
+            INICIAR AR
+          </button>
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>Meta Quest 2 / 3</span>
+        </div>
+      )}
+
       <div style={{
         position: 'absolute', left: 24, top: 24, zIndex: 20,
         display: 'inline-flex', alignItems: 'center', gap: 9,
@@ -658,7 +779,7 @@ function XRView({ onExit, analise, wsState }: any) {
       }}>
         <Mark size={18}/>
         <span style={{ fontSize: 13, fontWeight: 500, color: '#fff' }}>SENSUS XR</span>
-        <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.08em' }}>IMERSIVO</span>
+        <span style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.08em' }}>QUEST AR</span>
       </div>
       <div style={{
         position: 'absolute', right: 24, top: 24, zIndex: 20,
@@ -679,7 +800,7 @@ function XRView({ onExit, analise, wsState }: any) {
         color: '#fff', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8,
         cursor: 'pointer', fontFamily: 'inherit',
       }}>
-        <Icon d={ICONS.expand} size={13}/> Sair do modo XR (esc)
+        <Icon d={ICONS.expand} size={13}/> Sair
       </button>
     </div>
   )
@@ -688,7 +809,8 @@ function XRView({ onExit, analise, wsState }: any) {
 export function App() {
   const { wsState } = useWebSocket()
   const [view, setView] = useState('live')
-  const [xrMode, setXrMode] = useState(false)
+  // Initialize true on Quest so XRView renders on the very first paint (no flash of normal UI)
+  const [xrMode, setXrMode] = useState(() => isMetaQuest())
   const [analise, setAnalise] = useState<AnaliseResponse | null>(null)
   const [history, setHistory] = useState<any[]>([])
   const [sessions, setSessions] = useLocalState<any[]>('sensus.sessions', [])
@@ -698,6 +820,19 @@ export function App() {
   })
 
   const { announce } = useAudioAnnouncer()
+  const appRootRef = useRef<HTMLDivElement>(null)
+
+  const handleEnterXR = useCallback(() => {
+    if (window.speechSynthesis) {
+      const u = new SpeechSynthesisUtterance(''); u.volume = 0
+      window.speechSynthesis.speak(u)
+    }
+    setXrMode(true)
+  }, [])
+
+  const handleExitXR = useCallback(() => {
+    setXrMode(false)
+  }, [])
 
   const seenRef = useRef<Map<string, number>>(new Map())
   const addHistory = useCallback((evt: any) => {
@@ -731,19 +866,11 @@ export function App() {
     return () => webSocketService.offMessage(handler)
   }, [addHistory, announce, settings])
 
-  if (xrMode) return <XRView onExit={() => setXrMode(false)} analise={analise} wsState={wsState}/>
+  if (xrMode) return <XRView onExit={handleExitXR} analise={analise} wsState={wsState}/>
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', overflow: 'hidden' }}>
-      <Sidebar view={view} setView={setView} onXR={() => {
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-          // Desbloqueia o Autoplay Policy do navegador enviando um áudio mudo
-          const u = new SpeechSynthesisUtterance('');
-          u.volume = 0;
-          window.speechSynthesis.speak(u);
-        }
-        setXrMode(true);
-      }} sessions={sessions} wsState={wsState}/>
+    <div ref={appRootRef} style={{ display: 'flex', height: '100vh', background: 'var(--bg)', overflow: 'hidden' }}>
+      <Sidebar view={view} setView={setView} onXR={handleEnterXR} sessions={sessions} wsState={wsState}/>
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         <TopBar view={view}/>
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>

@@ -2,8 +2,10 @@ server:
   port: 8080
 
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   datasource:
-    url: jdbc:postgresql://postgres:5432/visaoassistiva
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/visaoassistiva}
     username: ${DB_USER:postgres}
     password: ${DB_PASS:postgres}
   jpa:
@@ -22,7 +24,7 @@ spring:
 
 app:
   ia:
-    base-url: http://ia-service:8000
+    base-url: http://ia-service:8002
     timeout-connect-ms: 2000
     timeout-read-ms: 5000
   rate-limit:
@@ -30,15 +32,7 @@ app:
   persistencia:
     habilitada: true
   filtro:
-    classes-relevantes:
-      - person
-      - chair
-      - dining table
-      - door
-      - stairs
-      - car
-      - cell phone
-      - backpack
+    classes-relevantes: []
 
 management:
   endpoints:

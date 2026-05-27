@@ -30,12 +30,12 @@ public class IAIntegrationService {
         this.webClient = webClient;
     }
 
-    public Mono<IAResponseDTO> enviarParaIA(byte[] imagemBytes) {
+    public Mono<IAResponseDTO> enviarParaIA(byte[] imagemBytes, String cameraId) {
         String frameId = UUID.randomUUID().toString();
         long timestamp = System.currentTimeMillis();
         String base64Image = Base64.getEncoder().encodeToString(imagemBytes);
 
-        InferRequestDTO request = new InferRequestDTO(frameId, timestamp, base64Image);
+        InferRequestDTO request = new InferRequestDTO(frameId, timestamp, base64Image, cameraId);
 
         log.debug("[IA] Chamando serviço: POST /infer frameId={}", frameId);
         long inicio = System.currentTimeMillis();
